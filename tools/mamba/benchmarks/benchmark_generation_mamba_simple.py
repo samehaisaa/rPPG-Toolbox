@@ -11,7 +11,6 @@ from einops import rearrange
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from mamba_ssm.models.mixer_seq_simple import MambaLMHeadModel
 
 
 parser = argparse.ArgumentParser(description="Generation benchmarking")
