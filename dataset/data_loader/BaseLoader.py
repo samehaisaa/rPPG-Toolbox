@@ -30,7 +30,6 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from retinaface import RetinaFace   # Source code: https://github.com/serengil/retinaface
 
 
 class BaseLoader(Dataset):
