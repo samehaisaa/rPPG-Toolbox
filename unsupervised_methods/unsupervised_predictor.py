@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 class ConformalPredictor:
-    def __init__(self, alpha=0.03):
+    def __init__(self, alpha=0.1):
         self.alpha = alpha
         self.calibration_errors = None
         
@@ -64,14 +64,14 @@ class ConformalPredictor:
         plt.plot(predictions, 'bo', label='Predicted HR')
         
         for i in range(len(predictions)):
-            plt.plot([i, i], [lower_bounds[i], upper_bounds[i]], 'r-', alpha=0.03)
+            plt.plot([i, i], [lower_bounds[i], upper_bounds[i]], 'r-', alpha=0.3)
             
         plt.fill_between(
             range(len(predictions)), 
             lower_bounds, 
             upper_bounds, 
             color='red', 
-            alpha=0.03, 
+            alpha=0.1, 
             label=f'{(1-self.alpha)*100:.0f}% Prediction Intervals'
         )
         
@@ -79,7 +79,7 @@ class ConformalPredictor:
         plt.ylabel('Heart Rate (bpm)')
         plt.title(f'Conformal Prediction Intervals for {method_name}')
         plt.legend()
-        plt.grid(True, linestyle='--', alpha=0.03)
+        plt.grid(True, linestyle='--', alpha=0.7)
         
         if file_name:
             plt.savefig(file_name, dpi=300, bbox_inches='tight')
@@ -91,11 +91,11 @@ class ConformalPredictor:
         errors = np.abs(predictions - ground_truth)
         interval_widths = [upper - lower for lower, upper in intervals]
         
-        plt.scatter(errors, interval_widths, alpha=0.03)
+        plt.scatter(errors, interval_widths, alpha=0.5)
         plt.xlabel('Absolute Error')
         plt.ylabel('Interval Width')
         plt.title(f'Error vs Interval Width for {method_name}')
-        plt.grid(True, linestyle='--', alpha=0.03)
+        plt.grid(True, linestyle='--', alpha=0.7)
         
         if file_name:
             error_width_filename = file_name.replace('.pdf', '_error_width.pdf')
@@ -108,7 +108,7 @@ def add_window_based_conformal_prediction(config, predict_hr_all, gt_hr_all, met
         predict_hr_all, gt_hr_all, test_size=0.3, random_state=42
     )
     
-    cp = ConformalPredictor(alpha=0.03)
+    cp = ConformalPredictor(alpha=0.3)
     cp.calibrate(pred_calibration, gt_calibration)
     
     empirical_coverage, avg_interval_width, _ = cp.evaluate_coverage(pred_test, gt_test)
