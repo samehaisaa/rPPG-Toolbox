@@ -64,7 +64,7 @@ class ConformalPredictor:
         plt.plot(predictions, 'bo', label='Predicted HR')
         
         for i in range(len(predictions)):
-            plt.plot([i, i], [lower_bounds[i], upper_bounds[i]], 'r-', alpha=0.3)
+            plt.plot([i, i], [lower_bounds[i], upper_bounds[i]], 'r-', alpha=0.03)
             
         plt.fill_between(
             range(len(predictions)), 
@@ -79,7 +79,7 @@ class ConformalPredictor:
         plt.ylabel('Heart Rate (bpm)')
         plt.title(f'Conformal Prediction Intervals for {method_name}')
         plt.legend()
-        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.grid(True, linestyle='--', alpha=0.03)
         
         if file_name:
             plt.savefig(file_name, dpi=300, bbox_inches='tight')
@@ -91,11 +91,11 @@ class ConformalPredictor:
         errors = np.abs(predictions - ground_truth)
         interval_widths = [upper - lower for lower, upper in intervals]
         
-        plt.scatter(errors, interval_widths, alpha=0.5)
+        plt.scatter(errors, interval_widths, alpha=0.03)
         plt.xlabel('Absolute Error')
         plt.ylabel('Interval Width')
         plt.title(f'Error vs Interval Width for {method_name}')
-        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.grid(True, linestyle='--', alpha=0.03)
         
         if file_name:
             error_width_filename = file_name.replace('.pdf', '_error_width.pdf')
