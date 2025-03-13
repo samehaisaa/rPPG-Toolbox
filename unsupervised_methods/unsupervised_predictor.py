@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 class ConformalPredictor:
-    def __init__(self, alpha=0.1):
+    def __init__(self, alpha=0.03):
         self.alpha = alpha
         self.calibration_errors = None
         
@@ -71,7 +71,7 @@ class ConformalPredictor:
             lower_bounds, 
             upper_bounds, 
             color='red', 
-            alpha=0.1, 
+            alpha=0.03, 
             label=f'{(1-self.alpha)*100:.0f}% Prediction Intervals'
         )
         
@@ -108,7 +108,7 @@ def add_window_based_conformal_prediction(config, predict_hr_all, gt_hr_all, met
         predict_hr_all, gt_hr_all, test_size=0.3, random_state=42
     )
     
-    cp = ConformalPredictor(alpha=0.1)
+    cp = ConformalPredictor(alpha=0.03)
     cp.calibrate(pred_calibration, gt_calibration)
     
     empirical_coverage, avg_interval_width, _ = cp.evaluate_coverage(pred_test, gt_test)
