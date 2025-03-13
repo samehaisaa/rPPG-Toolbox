@@ -1,4 +1,3 @@
-"""Unsupervised learning methods including POS, GREEN, CHROME, ICA, LGI and PBV."""
 import numpy as np
 from evaluation.post_process import *
 from unsupervised_methods.methods.CHROME_DEHAAN import *
@@ -8,80 +7,38 @@ from unsupervised_methods.methods.LGI import *
 from unsupervised_methods.methods.PBV import *
 from unsupervised_methods.methods.POS_WANG import *
 from unsupervised_methods.methods.OMIT import *
-from tqdm import tqdm  # Make sure this import is included
+from tqdm import tqdm
 from evaluation.BlandAltmanPy import BlandAltman
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 class ConformalPredictor:
-    """
-    Implements conformal prediction for heart rate estimation.
-    This assumes a black-box model where we only have access to input-output pairs.
-    """
     def __init__(self, alpha=0.1):
-        """
-        Initialize the conformal predictor with a significance level.
-        
-        Args:
-            alpha: The significance level (e.g., 0.1 for 90% confidence)
-        """
         self.alpha = alpha
         self.calibration_errors = None
         
     def calibrate(self, predictions, ground_truth):
-        """
-        Calibrate the predictor using a held-out calibration set.
-        
-        Args:
-            predictions: Array of model predictions (estimated heart rates)
-            ground_truth: Array of ground truth values (actual heart rates)
-        """
-        # Calculate absolute errors for calibration
         self.calibration_errors = np.abs(predictions - ground_truth)
-        # Sort errors for quantile calculation
         self.calibration_errors = np.sort(self.calibration_errors)
         
     def predict(self, point_prediction):
-        """
-        Generate prediction intervals for a given point prediction.
-        
-        Args:
-            point_prediction: The model's point prediction for heart rate
-            
-        Returns:
-            tuple: (lower_bound, upper_bound) defining the prediction interval
-        """
         if self.calibration_errors is None:
             raise ValueError("Calibrate the predictor first using calibration data")
             
-        # Calculate the quantile for the desired confidence level
         n = len(self.calibration_errors)
         q_index = int(np.ceil((n + 1) * (1 - self.alpha))) - 1
-        q_index = min(q_index, n - 1)  # Ensure we don't exceed array bounds
+        q_index = min(q_index, n - 1)
         
-        # Get the quantile value
         quantile = self.calibration_errors[q_index]
         
-        # Create prediction interval
         lower_bound = point_prediction - quantile
         upper_bound = point_prediction + quantile
         
-        # Ensure lower bound is non-negative for heart rate
         lower_bound = max(0, lower_bound)
         
         return lower_bound, upper_bound
     
     def evaluate_coverage(self, predictions, ground_truth):
-        """
-        Evaluate the empirical coverage of the prediction intervals.
-        
-        Args:
-            predictions: Array of model predictions
-            ground_truth: Array of ground truth values
-            
-        Returns:
-            float: The empirical coverage (proportion of ground truth values within intervals)
-        """
         in_interval = 0
         intervals = []
         
@@ -97,34 +54,18 @@ class ConformalPredictor:
         return empirical_coverage, avg_interval_width, intervals
     
     def plot_intervals(self, predictions, ground_truth, method_name, file_name=None):
-        """
-        Plot the prediction intervals alongside ground truth values.
-        
-        Args:
-            predictions: Array of model predictions
-            ground_truth: Array of ground truth values
-            method_name: Name of the method used (for plot title)
-            file_name: Optional filename to save the plot
-        """
-        # Generate intervals
         _, _, intervals = self.evaluate_coverage(predictions, ground_truth)
         lower_bounds = [interval[0] for interval in intervals]
         upper_bounds = [interval[1] for interval in intervals]
         
-        # Create the plot
         plt.figure(figsize=(10, 6))
         
-        # Plot ground truth
         plt.plot(ground_truth, 'go', label='Ground Truth HR')
-        
-        # Plot predictions
         plt.plot(predictions, 'bo', label='Predicted HR')
         
-        # Plot intervals
         for i in range(len(predictions)):
             plt.plot([i, i], [lower_bounds[i], upper_bounds[i]], 'r-', alpha=0.3)
             
-        # Add shaded area for intervals
         plt.fill_between(
             range(len(predictions)), 
             lower_bounds, 
@@ -145,7 +86,6 @@ class ConformalPredictor:
             
         plt.close()
         
-        # Create a second plot showing errors and interval widths
         plt.figure(figsize=(10, 6))
         
         errors = np.abs(predictions - ground_truth)
@@ -163,52 +103,34 @@ class ConformalPredictor:
             
         plt.close()
 
-# Function to implement conformal prediction in the unsupervised_predict function
-def add_conformal_prediction(config, predict_hr_all, gt_hr_all, method_name, evaluation_method):
-    """
-    Add conformal prediction to the heart rate predictions.
-    
-    Args:
-        config: Configuration object
-        predict_hr_all: Array of predicted heart rates
-        gt_hr_all: Array of ground truth heart rates
-        method_name: Name of the unsupervised method used
-        evaluation_method: String indicating whether "peak detection" or "FFT" was used
-        
-    Returns:
-        tuple: (empirical_coverage, avg_interval_width)
-    """
-    # Split data into calibration and test sets (70% calibration, 30% test)
-    # In a real application, you might want to use a proper calibration set
+def add_window_based_conformal_prediction(config, predict_hr_all, gt_hr_all, method_name, evaluation_method):
     pred_calibration, pred_test, gt_calibration, gt_test = train_test_split(
         predict_hr_all, gt_hr_all, test_size=0.3, random_state=42
     )
     
-    # Create and calibrate the conformal predictor
-    cp = ConformalPredictor(alpha=0.1)  # 90% confidence level
+    cp = ConformalPredictor(alpha=0.1)
     cp.calibrate(pred_calibration, gt_calibration)
     
-    # Evaluate coverage on test set
     empirical_coverage, avg_interval_width, _ = cp.evaluate_coverage(pred_test, gt_test)
     
-    print(f"\n=== Conformal Prediction Results ({evaluation_method}) ===")
+    print(f"\n=== Window-Based Conformal Prediction Results ({evaluation_method}) ===")
+    print(f"Number of windows used for calibration: {len(pred_calibration)}")
+    print(f"Number of windows used for testing: {len(pred_test)}")
     print(f"Target confidence level: {(1-cp.alpha)*100:.0f}%")
     print(f"Empirical coverage: {empirical_coverage*100:.2f}%")
     print(f"Average interval width: {avg_interval_width:.2f} bpm")
     
-    # Generate and save plots
     if config.TOOLBOX_MODE == 'unsupervised_method':
-        filename_id = method_name + "_" + config.UNSUPERVISED.DATA.DATASET
+        filename_id = method_name + "_" + config.UNSUPERVISED.DATA.DATASET + "_window_based"
     else:
         raise ValueError('unsupervised_predictor.py evaluation only supports unsupervised_method!')
     
     plot_filename = f'{filename_id}_{evaluation_method}_ConformalPrediction.pdf'
-    cp.plot_intervals(pred_test, gt_test, method_name, plot_filename)
+    cp.plot_intervals(pred_test[:100], gt_test[:100], method_name + " (Window-Based)", plot_filename)
     
     return empirical_coverage, avg_interval_width
 
 def unsupervised_predict(config, data_loader, method_name):
-    """ Model evaluation on the testing dataset."""
     if data_loader["unsupervised"] is None:
         raise ValueError("No data for unsupervised method predicting")
     print("===Unsupervised Method ( " + method_name + " ) Predicting ===")
@@ -219,10 +141,9 @@ def unsupervised_predict(config, data_loader, method_name):
     SNR_all = []
     MACC_all = []
     
-    # Make sure tqdm is properly imported at the top of the file
     sbar = tqdm(data_loader["unsupervised"], ncols=80)
     
-    for _, test_batch in enumerate(sbar):  # Fixed the asterisk here
+    for _, test_batch in enumerate(sbar):
         batch_size = test_batch[0].shape[0]
         for idx in range(batch_size):
             data_input, labels_input = test_batch[0][idx].cpu().numpy(), test_batch[1][idx].cpu().numpy()
@@ -284,7 +205,6 @@ def unsupervised_predict(config, data_loader, method_name):
                     
     print("Used Unsupervised Method: " + method_name)
     
-    # Filename ID to be used in any results files (e.g., Bland-Altman plots) that get saved
     if config.TOOLBOX_MODE == 'unsupervised_method':
         filename_id = method_name + "_" + config.UNSUPERVISED.DATA.DATASET
     else:
@@ -304,9 +224,6 @@ def unsupervised_predict(config, data_loader, method_name):
                 print("Peak MAE (Peak Label): {0} +/- {1}".format(MAE_PEAK, standard_error))
                 
             elif metric == "RMSE":
-                # Calculate the squared errors, then RMSE, in order to allow
-                # for a more robust and intuitive standard error that won't
-                # be influenced by abnormal distributions of errors.
                 squared_errors = np.square(predict_hr_peak_all - gt_hr_peak_all)
                 RMSE_PEAK = np.sqrt(np.mean(squared_errors))
                 standard_error = np.sqrt(np.std(squared_errors) / np.sqrt(num_test_samples))
@@ -352,14 +269,12 @@ def unsupervised_predict(config, data_loader, method_name):
                     file_name=f'{filename_id}_Peak_BlandAltman_DifferencePlot.pdf'
                 )
             elif metric == "CP":
-                # Add conformal prediction analysis for peak detection
-                add_conformal_prediction(config, predict_hr_peak_all, gt_hr_peak_all, method_name, "Peak")
+                add_window_based_conformal_prediction(config, predict_hr_peak_all, gt_hr_peak_all, method_name, "Peak")
             else:
                 raise ValueError("Wrong Test Metric Type")
                 
-        # Always run conformal prediction analysis if not in metrics
         if "CP" not in config.UNSUPERVISED.METRICS:
-            add_conformal_prediction(config, predict_hr_peak_all, gt_hr_peak_all, method_name, "Peak")
+            add_window_based_conformal_prediction(config, predict_hr_peak_all, gt_hr_peak_all, method_name, "Peak")
             
     elif config.INFERENCE.EVALUATION_METHOD == "FFT":
         predict_hr_fft_all = np.array(predict_hr_fft_all)
@@ -375,9 +290,6 @@ def unsupervised_predict(config, data_loader, method_name):
                 print("FFT MAE (FFT Label): {0} +/- {1}".format(MAE_FFT, standard_error))
                 
             elif metric == "RMSE":
-                # Calculate the squared errors, then RMSE, in order to allow
-                # for a more robust and intuitive standard error that won't
-                # be influenced by abnormal distributions of errors.
                 squared_errors = np.square(predict_hr_fft_all - gt_hr_fft_all)
                 RMSE_FFT = np.sqrt(np.mean(squared_errors))
                 standard_error = np.sqrt(np.std(squared_errors) / np.sqrt(num_test_samples))
@@ -423,13 +335,11 @@ def unsupervised_predict(config, data_loader, method_name):
                     file_name=f'{filename_id}_FFT_BlandAltman_DifferencePlot.pdf'
                 )
             elif metric == "CP":
-                # Add conformal prediction analysis for FFT
-                add_conformal_prediction(config, predict_hr_fft_all, gt_hr_fft_all, method_name, "FFT")
+                add_window_based_conformal_prediction(config, predict_hr_fft_all, gt_hr_fft_all, method_name, "FFT")
             else:
                 raise ValueError("Wrong Test Metric Type")
                 
-        # Always run conformal prediction analysis if not in metrics
         if "CP" not in config.UNSUPERVISED.METRICS:
-            add_conformal_prediction(config, predict_hr_fft_all, gt_hr_fft_all, method_name, "FFT")
+            add_window_based_conformal_prediction(config, predict_hr_fft_all, gt_hr_fft_all, method_name, "FFT")
     else:
         raise ValueError("Inference evaluation method name wrong!")
