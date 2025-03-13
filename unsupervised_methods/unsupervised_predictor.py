@@ -10,6 +10,8 @@ from unsupervised_methods.methods.POS_WANG import *
 from unsupervised_methods.methods.OMIT import *
 from tqdm import tqdm
 from evaluation.BlandAltmanPy import BlandAltman
+# Import CPPlot (assumed to be already implemented in your project)
+from evaluation.cp_plot import CPPlot  
 
 def unsupervised_predict(config, data_loader, method_name):
     """ Model evaluation on the testing dataset."""
@@ -62,15 +64,19 @@ def unsupervised_predict(config, data_loader, method_name):
                     continue
 
                 if config.INFERENCE.EVALUATION_METHOD == "peak detection":
-                    gt_hr, pre_hr, SNR, macc = calculate_metric_per_video(BVP_window, label_window, diff_flag=False,
-                                                                    fs=config.UNSUPERVISED.DATA.FS, hr_method='Peak')
+                    gt_hr, pre_hr, SNR, macc = calculate_metric_per_video(
+                        BVP_window, label_window, diff_flag=False,
+                        fs=config.UNSUPERVISED.DATA.FS, hr_method='Peak'
+                    )
                     gt_hr_peak_all.append(gt_hr)
                     predict_hr_peak_all.append(pre_hr)
                     SNR_all.append(SNR)
                     MACC_all.append(macc)
                 elif config.INFERENCE.EVALUATION_METHOD == "FFT":
-                    gt_fft_hr, pre_fft_hr, SNR, macc = calculate_metric_per_video(BVP_window, label_window, diff_flag=False,
-                                                                    fs=config.UNSUPERVISED.DATA.FS, hr_method='FFT')
+                    gt_fft_hr, pre_fft_hr, SNR, macc = calculate_metric_per_video(
+                        BVP_window, label_window, diff_flag=False,
+                        fs=config.UNSUPERVISED.DATA.FS, hr_method='FFT'
+                    )
                     gt_hr_fft_all.append(gt_fft_hr)
                     predict_hr_fft_all.append(pre_fft_hr)
                     SNR_all.append(SNR)
@@ -97,9 +103,6 @@ def unsupervised_predict(config, data_loader, method_name):
                 standard_error = np.std(np.abs(predict_hr_peak_all - gt_hr_peak_all)) / np.sqrt(num_test_samples)
                 print("Peak MAE (Peak Label): {0} +/- {1}".format(MAE_PEAK, standard_error))
             elif metric == "RMSE":
-                # Calculate the squared errors, then RMSE, in order to allow
-                # for a more robust and intuitive standard error that won't
-                # be influenced by abnormal distributions of errors.
                 squared_errors = np.square(predict_hr_peak_all - gt_hr_peak_all)
                 RMSE_PEAK = np.sqrt(np.mean(squared_errors))
                 standard_error = np.sqrt(np.std(squared_errors) / np.sqrt(num_test_samples))
@@ -121,6 +124,16 @@ def unsupervised_predict(config, data_loader, method_name):
                 MACC_avg = np.mean(MACC_all)
                 standard_error = np.std(MACC_all) / np.sqrt(num_test_samples)
                 print("MACC (avg): {0} +/- {1}".format(MACC_avg, standard_error))
+            elif metric == "CP":
+                # Generate CP plot for peak detection.
+                cp_plot = CPPlot(gt_hr_peak_all, predict_hr_peak_all, config)
+                cp_plot.plot(
+                    x_label='Nominal Confidence Level',
+                    y_label='Empirical Coverage',
+                    show_legend=True, figure_size=(5, 5),
+                    the_title=f'{filename_id}_Peak_CP_Plot',
+                    file_name=f'{filename_id}_Peak_CP_Plot.pdf'
+                )
             elif "BA" in metric:
                 compare = BlandAltman(gt_hr_peak_all, predict_hr_peak_all, config, averaged=True)
                 compare.scatter_plot(
@@ -128,13 +141,15 @@ def unsupervised_predict(config, data_loader, method_name):
                     y_label='rPPG HR [bpm]',
                     show_legend=True, figure_size=(5, 5),
                     the_title=f'{filename_id}_Peak_BlandAltman_ScatterPlot',
-                    file_name=f'{filename_id}_Peak_BlandAltman_ScatterPlot.pdf')
+                    file_name=f'{filename_id}_Peak_BlandAltman_ScatterPlot.pdf'
+                )
                 compare.difference_plot(
                     x_label='Difference between rPPG HR and GT PPG HR [bpm]',
                     y_label='Average of rPPG HR and GT PPG HR [bpm]',
                     show_legend=True, figure_size=(5, 5),
                     the_title=f'{filename_id}_Peak_BlandAltman_DifferencePlot',
-                    file_name=f'{filename_id}_Peak_BlandAltman_DifferencePlot.pdf')
+                    file_name=f'{filename_id}_Peak_BlandAltman_DifferencePlot.pdf'
+                )
             else:
                 raise ValueError("Wrong Test Metric Type")
     elif config.INFERENCE.EVALUATION_METHOD == "FFT":
@@ -149,9 +164,6 @@ def unsupervised_predict(config, data_loader, method_name):
                 standard_error = np.std(np.abs(predict_hr_fft_all - gt_hr_fft_all)) / np.sqrt(num_test_samples)
                 print("FFT MAE (FFT Label): {0} +/- {1}".format(MAE_FFT, standard_error))
             elif metric == "RMSE":
-                # Calculate the squared errors, then RMSE, in order to allow
-                # for a more robust and intuitive standard error that won't
-                # be influenced by abnormal distributions of errors.
                 squared_errors = np.square(predict_hr_fft_all - gt_hr_fft_all)
                 RMSE_FFT = np.sqrt(np.mean(squared_errors))
                 standard_error = np.sqrt(np.std(squared_errors) / np.sqrt(num_test_samples))
@@ -173,6 +185,16 @@ def unsupervised_predict(config, data_loader, method_name):
                 MACC_avg = np.mean(MACC_all)
                 standard_error = np.std(MACC_all) / np.sqrt(num_test_samples)
                 print("MACC (avg): {0} +/- {1}".format(MACC_avg, standard_error))
+            elif metric == "CP":
+                # Generate CP plot for FFT.
+                cp_plot = CPPlot(gt_hr_fft_all, predict_hr_fft_all, config)
+                cp_plot.plot(
+                    x_label='Nominal Confidence Level',
+                    y_label='Empirical Coverage',
+                    show_legend=True, figure_size=(5, 5),
+                    the_title=f'{filename_id}_FFT_CP_Plot',
+                    file_name=f'{filename_id}_FFT_CP_Plot.pdf'
+                )
             elif "BA" in metric:
                 compare = BlandAltman(gt_hr_fft_all, predict_hr_fft_all, config, averaged=True)
                 compare.scatter_plot(
@@ -180,13 +202,15 @@ def unsupervised_predict(config, data_loader, method_name):
                     y_label='rPPG HR [bpm]',
                     show_legend=True, figure_size=(5, 5),
                     the_title=f'{filename_id}_FFT_BlandAltman_ScatterPlot',
-                    file_name=f'{filename_id}_FFT_BlandAltman_ScatterPlot.pdf')
+                    file_name=f'{filename_id}_FFT_BlandAltman_ScatterPlot.pdf'
+                )
                 compare.difference_plot(
                     x_label='Difference between rPPG HR and GT PPG HR [bpm]', 
                     y_label='Average of rPPG HR and GT PPG HR [bpm]', 
                     show_legend=True, figure_size=(5, 5),
                     the_title=f'{filename_id}_FFT_BlandAltman_DifferencePlot',
-                    file_name=f'{filename_id}_FFT_BlandAltman_DifferencePlot.pdf')
+                    file_name=f'{filename_id}_FFT_BlandAltman_DifferencePlot.pdf'
+                )
             else:
                 raise ValueError("Wrong Test Metric Type")
     else:
