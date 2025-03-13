@@ -11,7 +11,7 @@ def unsupervised_predict(config, data_loader, method_name):
     MACC_all = []
     sbar = tqdm(data_loader["unsupervised"], ncols=80)
     
-    for *, test_batch in enumerate(sbar):
+    for _, test_batch in enumerate(sbar):
         batch_size = test_batch[0].shape[0]
         for idx in range(batch_size):
             data_input, labels_input = test_batch[0][idx].cpu().numpy(), test_batch[1][idx].cpu().numpy()
