@@ -50,26 +50,59 @@ def calculate_metrics(predictions, labels, config):
     gt_hr_peak_all = list()
     SNR_all = list()
     MACC_all = list()
+    print("keys of predictions: ", predictions.keys())
     print("Calculating metrics!")
+    
+    # Initialize counters for detailed information
+    total_subjects = len(predictions.keys())
+    total_windows_processed = 0
+    total_windows_skipped = 0
+    windows_per_subject = {}
+    
+    print("\n=============== WINDOW CONFIGURATION INFO ===============")
+    print(f"Total number of test subjects: {total_subjects}")
+    print(f"USE_SMALLER_WINDOW set to: {config.INFERENCE.EVALUATION_WINDOW.USE_SMALLER_WINDOW}")
+    print(f"WINDOW_SIZE set to: {config.INFERENCE.EVALUATION_WINDOW.WINDOW_SIZE} seconds")
+    print(f"Sampling rate (FS): {config.TEST.DATA.FS} frames per second")
+    
+    if config.INFERENCE.EVALUATION_WINDOW.USE_SMALLER_WINDOW:
+        print(f"Window size in frames: {config.INFERENCE.EVALUATION_WINDOW.WINDOW_SIZE * config.TEST.DATA.FS} frames")
+        print("Expected data points will be multiple per subject")
+    else:
+        print("Processing each subject as a single window - one data point per subject")
+        print(f"Expected number of data points: {total_subjects}")
+    print("=========================================================\n")
+    
     for index in tqdm(predictions.keys(), ncols=80):
         prediction = _reform_data_from_dict(predictions[index])
         label = _reform_data_from_dict(labels[index])
 
         video_frame_size = prediction.shape[0]
+        subject_windows = 0
+        subject_skipped = 0
+        
         if config.INFERENCE.EVALUATION_WINDOW.USE_SMALLER_WINDOW:
             window_frame_size = config.INFERENCE.EVALUATION_WINDOW.WINDOW_SIZE * config.TEST.DATA.FS
             if window_frame_size > video_frame_size:
                 window_frame_size = video_frame_size
         else:
             window_frame_size = video_frame_size
+        
+        # Calculate expected number of windows for this subject
+        expected_windows = int(np.ceil(video_frame_size / window_frame_size))
 
         for i in range(0, len(prediction), window_frame_size):
             pred_window = prediction[i:i+window_frame_size]
             label_window = label[i:i+window_frame_size]
 
             if len(pred_window) < 9:
-                print(f"Window frame size of {len(pred_window)} is smaller than minimum pad length of 9. Window ignored!")
+                print(f"Subject {index}: Window frame size of {len(pred_window)} is smaller than minimum pad length of 9. Window ignored!")
+                subject_skipped += 1
+                total_windows_skipped += 1
                 continue
+
+            subject_windows += 1
+            total_windows_processed += 1
 
             if config.TEST.DATA.PREPROCESS.LABEL_TYPE == "Standardized" or \
                     config.TEST.DATA.PREPROCESS.LABEL_TYPE == "Raw":
@@ -95,6 +128,46 @@ def calculate_metrics(predictions, labels, config):
                 MACC_all.append(macc)
             else:
                 raise ValueError("Inference evaluation method name wrong!")
+        
+        # Store processed window count for this subject
+        windows_per_subject[index] = {
+            'video_length_frames': video_frame_size,
+            'video_length_seconds': video_frame_size / config.TEST.DATA.FS,
+            'window_size_frames': window_frame_size,
+            'window_size_seconds': window_frame_size / config.TEST.DATA.FS,
+            'expected_windows': expected_windows,
+            'processed_windows': subject_windows,
+            'skipped_windows': subject_skipped
+        }
+    
+    # Detailed window processing report
+    print("\n=============== WINDOW PROCESSING SUMMARY ===============")
+    print(f"Total subjects processed: {total_subjects}")
+    print(f"Total windows processed: {total_windows_processed}")
+    print(f"Total windows skipped (too small): {total_windows_skipped}")
+    print(f"Average windows per subject: {total_windows_processed / total_subjects:.2f}")
+    
+    # Calculate theoretical maximum windows
+    if config.INFERENCE.EVALUATION_WINDOW.USE_SMALLER_WINDOW:
+        window_size_frames = config.INFERENCE.EVALUATION_WINDOW.WINDOW_SIZE * config.TEST.DATA.FS
+        print(f"\nWindow configuration effect on data points:")
+        print(f"  - Current WINDOW_SIZE: {config.INFERENCE.EVALUATION_WINDOW.WINDOW_SIZE} seconds")
+        print(f"  - Current data points for Bland-Altman plot: {total_windows_processed}")
+        
+        # Suggest other window sizes
+        alternative_windows = [1, 2, 5, 10, 15, 30, 60]
+        print(f"\nEstimated data points with different WINDOW_SIZE values:")
+        for w_size in alternative_windows:
+            if w_size == config.INFERENCE.EVALUATION_WINDOW.WINDOW_SIZE:
+                continue
+            # Roughly estimate based on current data
+            est_points = min(total_subjects * int(np.ceil(
+                (config.INFERENCE.EVALUATION_WINDOW.WINDOW_SIZE * total_windows_processed) / 
+                (total_subjects * w_size)
+            )), total_subjects * 1000)  # Cap at a reasonable number
+            print(f"  - WINDOW_SIZE = {w_size} seconds: ~{est_points} data points")
+    
+    print("=========================================================\n")
     
     # Filename ID to be used in any results files (e.g., Bland-Altman plots) that get saved
     if config.TOOLBOX_MODE == 'train_and_test':
@@ -105,12 +178,15 @@ def calculate_metrics(predictions, labels, config):
     else:
         raise ValueError('Metrics.py evaluation only supports train_and_test and only_test!')
 
+    # At the end of calculations, print number of data points for Bland-Altman plots
     if config.INFERENCE.EVALUATION_METHOD == "FFT":
         gt_hr_fft_all = np.array(gt_hr_fft_all)
         predict_hr_fft_all = np.array(predict_hr_fft_all)
         SNR_all = np.array(SNR_all)
         MACC_all = np.array(MACC_all)
         num_test_samples = len(predict_hr_fft_all)
+        print(f"\nNumber of data points for FFT Bland-Altman plot: {num_test_samples}")
+        
         for metric in config.TEST.METRICS:
             if metric == "MAE":
                 MAE_FFT = np.mean(np.abs(predict_hr_fft_all - gt_hr_fft_all))
@@ -145,6 +221,8 @@ def calculate_metrics(predictions, labels, config):
                 pass
             elif "BA" in metric:  
                 compare = BlandAltman(gt_hr_fft_all, predict_hr_fft_all, config, averaged=True)
+                print(f"\nCreating Bland-Altman plots with {num_test_samples} data points")
+                print(f"Window configuration: USE_SMALLER_WINDOW={config.INFERENCE.EVALUATION_WINDOW.USE_SMALLER_WINDOW}, WINDOW_SIZE={config.INFERENCE.EVALUATION_WINDOW.WINDOW_SIZE}")
                 compare.scatter_plot(
                     x_label='GT PPG HR [bpm]',
                     y_label='rPPG HR [bpm]',
