@@ -1,12 +1,12 @@
 BASE: ['']
 TOOLBOX_MODE: "unsupervised_method"      # "train_and_test"  or "only_test" or "unsupervised_method"
 UNSUPERVISED:
-  METHOD: ["ICA", "POS", "CHROM", "GREEN", "LGI", "PBV", "OMIT"]
-  METRICS: ["GP"]
+  METHOD: ["CHROM"]
+  METRICS: ['MAE', 'RMSE', 'MAPE', 'Pearson', 'SNR', 'BA']
   DATA:
     FS: 30
     DATASET: UBFC-rPPG
-    DO_PREPROCESS: False               # if first time, should be true
+    DO_PREPROCESS: True               # if first time, should be true
     DATA_FORMAT: NDHWC
     DATA_PATH: "/kaggle/input/ubfc-rppg-dataset"                     # Raw dataset path, need to be updated
     CACHED_PATH: "PreprocessedData"    # Processed dataset save path, need to be updated
@@ -34,5 +34,5 @@ UNSUPERVISED:
 INFERENCE:
   EVALUATION_METHOD: "peak detection"        # "FFT" or "peak detection"
   EVALUATION_WINDOW:
-    USE_SMALLER_WINDOW: False        # Change this if you'd like an evaluation window smaller than the test video length
+    USE_SMALLER_WINDOW: True        # Change this if you'd like an evaluation window smaller than the test video length
     WINDOW_SIZE: 10        # In seconds
