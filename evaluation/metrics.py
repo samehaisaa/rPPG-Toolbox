@@ -12,6 +12,30 @@ def read_label(dataset):
     out_dict = {str(value['VideoID']): value for key, value in out_dict.items()}
     return out_dict
 
+def plot_hr_distribution(gt_hr_fft_all, save_path, file_name="HR_Distribution.pdf", bins=30):
+    """
+    Génère et sauvegarde un histogramme de la distribution des HR dans gt_hr_fft_all.
+
+    :param gt_hr_fft_all: Liste ou tableau numpy des valeurs HR (ground truth).
+    :param save_path: Chemin où sauvegarder la figure.
+    :param file_name: Nom du fichier de sortie.
+    :param bins: Nombre de bins pour l'histogramme.
+    """
+    if not os.path.exists(save_path):
+        os.makedirs(save_path, exist_ok=True)
+
+    plt.figure(figsize=(6, 4))
+    plt.hist(gt_hr_fft_all, bins=bins, color='skyblue', edgecolor='black', alpha=0.7)
+    plt.xlabel('GT PPG HR [bpm]')
+    plt.ylabel('Fréquence')
+    plt.title('Distribution des HR (Ground Truth)')
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    
+    save_file = os.path.join(save_path, file_name)
+    plt.savefig(save_file, bbox_inches='tight', dpi=300)
+    plt.close()
+    print(f"Histogramme sauvegardé sous {save_file}")
+
 
 def read_hr_label(feed_dict, index):
     """Read manually corrected UBFC labels."""
@@ -235,6 +259,7 @@ def calculate_metrics(predictions, labels, config):
                     show_legend=True, figure_size=(5, 5),
                     the_title=f'{filename_id}_FFT_BlandAltman_DifferencePlot',
                     file_name=f'{filename_id}_FFT_BlandAltman_DifferencePlot.pdf')
+                plot_hr_distribution(gt_hr_fft_all, save_path=config.LOG.PATH)
             else:
                 raise ValueError("Wrong Test Metric Type")
     elif config.INFERENCE.EVALUATION_METHOD == "peak detection":
