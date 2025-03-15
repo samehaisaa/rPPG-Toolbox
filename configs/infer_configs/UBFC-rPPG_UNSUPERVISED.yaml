@@ -8,8 +8,8 @@ UNSUPERVISED:
     DATASET: UBFC-rPPG
     DO_PREPROCESS: True               # if first time, should be true
     DATA_FORMAT: NDHWC
-    #DATA_PATH: "/kaggle/input/ubfc-rppg-s1-only"
-    DATA_PATH: "/kaggle/working/rPPG-Toolbox/output" # Raw dataset path, need to be updated
+    DATA_PATH: "/kaggle/input/ubfc-rppg-s1-only"
+    #DATA_PATH: "/kaggle/working/rPPG-Toolbox/output" # Raw dataset path, need to be updated
     CACHED_PATH: "APreprocessedData"    # Processed dataset save path, need to be updated
     EXP_DATA_NAME: ""
     BEGIN: 0.0
