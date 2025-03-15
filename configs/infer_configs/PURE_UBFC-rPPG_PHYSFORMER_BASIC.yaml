@@ -9,8 +9,8 @@ TEST:
     DO_PREPROCESS: True                    # if first time, should be true
     DATA_FORMAT: NCDHW
     #DATA_PATH: "/kaggle/input/ubfc-rppg-dataset" # Raw dataset path, need to be updated
-    #DATA_PATH: "/kaggle/input/ubfc-rppg-s1-only" #1 SUBJECT FOR TESTING
-    DATA_PATH: "/kaggle/working/rPPG-Toolbox/output" #1 BLURRY SUBJECT
+    DATA_PATH: "/kaggle/input/ubfc-rppg-s1-only" #1 SUBJECT FOR TESTING
+    #DATA_PATH: "/kaggle/working/rPPG-Toolbox/output" #1 BLURRY SUBJECT
     CACHED_PATH: "preprocessed"    # Processed dataset save path, need to be updated
     EXP_DATA_NAME: ""
     BEGIN: 0.0
