@@ -40,8 +40,6 @@ def unsupervised_predict(config, data_loader, method_name):
                 BVP = LGI(data_input)
             elif method_name == "PBV":
                 BVP = PBV(data_input)
-            elif method_name == "OMIT":
-                     = OMIT(data_input)
             else:
                 raise ValueError("unsupervised method name wrong!")
 
