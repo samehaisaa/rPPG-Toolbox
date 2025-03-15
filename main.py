@@ -9,7 +9,7 @@ import torch
 from config import get_config
 from dataset import data_loader
 from neural_methods import trainer
-from unsupervised_methods.unsupervised_predictor import unsupervised_predict,unsupervised_predict_with_uncertainty
+from unsupervised_methods.unsupervised_predictor import unsupervised_predict
 from torch.utils.data import DataLoader
 
 RANDOM_SEED = 100
@@ -123,7 +123,7 @@ def unsupervised_method_inference(config, data_loader):
         if unsupervised_method == "POS":
             unsupervised_predict(config, data_loader, "POS")
         elif unsupervised_method == "CHROM":
-            unsupervised_predict_with_uncertainty(config, data_loader)
+            unsupervised_predict(config, data_loader,"CHROM")
         elif unsupervised_method == "ICA":
             unsupervised_predict(config, data_loader, "ICA")
         elif unsupervised_method == "GREEN":
