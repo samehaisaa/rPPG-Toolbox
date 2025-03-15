@@ -9,7 +9,7 @@ import torch
 from config import get_config
 from dataset import data_loader
 from neural_methods import trainer
-from unsupervised_methods.unsupervised_predictor import unsupervised_predict
+from unsupervised_methods.unsupervised_predictor import unsupervised_predict,unsupervised_predict_with_uncertainty
 from torch.utils.data import DataLoader
 
 RANDOM_SEED = 100
@@ -123,7 +123,7 @@ def unsupervised_method_inference(config, data_loader):
         if unsupervised_method == "POS":
             unsupervised_predict(config, data_loader, "POS")
         elif unsupervised_method == "CHROM":
-            unsupervised_predict(config, data_loader, "CHROM")
+            unsupervised_predict_with_uncertainty(config, data_loader)
         elif unsupervised_method == "ICA":
             unsupervised_predict(config, data_loader, "ICA")
         elif unsupervised_method == "GREEN":
@@ -148,6 +148,7 @@ if __name__ == "__main__":
 
     # configurations.
     config = get_config(args)
+    print('Configuration:')
 
     data_loader_dict = dict() # dictionary of data loaders 
     if config.TOOLBOX_MODE == "train_and_test":
@@ -183,7 +184,7 @@ if __name__ == "__main__":
                 device=config.DEVICE)
             data_loader_dict['train'] = DataLoader(
                 dataset=train_data_loader,
-                num_workers=4,
+                num_workers=16,
                 batch_size=config.TRAIN.BATCH_SIZE,
                 shuffle=True,
                 worker_init_fn=seed_worker,
@@ -225,7 +226,7 @@ if __name__ == "__main__":
                 device=config.DEVICE)
             data_loader_dict["valid"] = DataLoader(
                 dataset=valid_data,
-                num_workers=4,
+                num_workers=16,
                 batch_size=config.TRAIN.BATCH_SIZE,  # batch size for val is the same as train
                 shuffle=False,
                 worker_init_fn=seed_worker,
@@ -269,7 +270,7 @@ if __name__ == "__main__":
                 device=config.DEVICE)
             data_loader_dict["test"] = DataLoader(
                 dataset=test_data,
-                num_workers=4,
+                num_workers=16,
                 batch_size=config.INFERENCE.BATCH_SIZE,
                 shuffle=False,
                 worker_init_fn=seed_worker,
@@ -305,7 +306,7 @@ if __name__ == "__main__":
             device=config.DEVICE)
         data_loader_dict["unsupervised"] = DataLoader(
             dataset=unsupervised_data,
-            num_workers=4,
+            num_workers=16,
             batch_size=1,
             shuffle=False,
             worker_init_fn=seed_worker,
