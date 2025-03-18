@@ -11,7 +11,6 @@ from unsupervised_methods.methods.OMIT import *
 from tqdm import tqdm
 from evaluation.BlandAltmanPy import BlandAltman
 # Import CPPlot (assumed to be already implemented in your project)
-from evaluation.cp_plot import CPPlot  
 
 def unsupervised_predict(config, data_loader, method_name):
     """ Model evaluation on the testing dataset."""
