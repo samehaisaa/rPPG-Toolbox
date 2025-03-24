@@ -260,10 +260,10 @@ class PhysFormerTrainer(BaseTrainer):
                     uncertainties[subj_index][sort_index] = std_ppg_test[idx].cpu().numpy()
                     labels[subj_index][sort_index] = label[idx].cpu().numpy()
 
-    print('')
-    calculate_metrics(predictions, labels, self.config)
-    if self.config.TEST.OUTPUT_SAVE_DIR:  # saving test outputs
-        self.save_test_outputs(predictions, uncertainties, labels, self.config)
+        print('')
+        calculate_metrics(predictions, labels, self.config)
+        if self.config.TEST.OUTPUT_SAVE_DIR:  # saving test outputs
+            self.save_test_outputs(predictions, uncertainties, labels, self.config)
 
     def save_model(self, index):
         if not os.path.exists(self.model_dir):
