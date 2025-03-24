@@ -30,7 +30,8 @@ class BaseTrainer:
         import pickle
         import os
         import matplotlib.pyplot as plt
-    
+        import numpy as np
+        
         output_dir = config.TEST.OUTPUT_SAVE_DIR
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
@@ -45,7 +46,6 @@ class BaseTrainer:
             raise ValueError('Metrics.py evaluation only supports train_and_test and only_test!')
         
         output_path = os.path.join(output_dir, filename_id + '_outputs.pickle')
-    
         data = dict()
         data['predictions'] = predictions
         data['uncertainties'] = uncertainties
@@ -55,32 +55,54 @@ class BaseTrainer:
     
         with open(output_path, 'wb') as handle:
             pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    
         print('Saving outputs to:', output_path)
     
-        # Plot the rPPG predictions with uncertainty error bars.
+        # Plot the rPPG predictions with shaded uncertainty bands
         plot_dir = os.path.join(output_dir, "plots")
         if not os.path.exists(plot_dir):
             os.makedirs(plot_dir, exist_ok=True)
-    
+        
         for subj in predictions:
             for sort_index in predictions[subj]:
                 pred = predictions[subj][sort_index]
                 uncertainty = uncertainties[subj][sort_index]
-                time = range(len(pred))
+                time = np.array(range(len(pred)))
                 
-                plt.figure()
-                plt.errorbar(time, pred, yerr=uncertainty, fmt='-o', ecolor='r', capsize=2, label='Predicted rPPG')
+                plt.figure(figsize=(10, 6))
+                
+                # Plot the main prediction line
+                plt.plot(time, pred, 'b-', label='Predicted rPPG')
+                
+                # Create shaded regions for different confidence levels
+                # 1-sigma band (68% confidence interval)
+                upper_1sigma = pred + uncertainty
+                lower_1sigma = pred - uncertainty
+                plt.fill_between(time, lower_1sigma, upper_1sigma, color='blue', alpha=0.3, 
+                                label='68% Confidence')
+                
+                # 2-sigma band (95% confidence interval) - assuming Gaussian distribution
+                upper_2sigma = pred + 2 * uncertainty
+                lower_2sigma = pred - 2 * uncertainty
+                plt.fill_between(time, lower_2sigma, upper_2sigma, color='blue', alpha=0.1,
+                                label='95% Confidence')
+                
+                # Add ground truth if available
+                if labels is not None and subj in labels and sort_index in labels[subj]:
+                    label = labels[subj][sort_index]
+                    plt.plot(time[:len(label)], label, 'g-', label='Ground Truth')
+                
                 plt.title(f"Subject {subj}, Index {sort_index}")
                 plt.xlabel("Time")
                 plt.ylabel("rPPG")
                 plt.legend()
+                plt.grid(True, alpha=0.3)
                 plt.tight_layout()
                 
+                # Save the plot
                 plot_path = os.path.join(plot_dir, f"subj_{subj}_index_{sort_index}.png")
-                plt.savefig(plot_path)
+                plt.savefig(plot_path, dpi=300)
                 plt.close()
-    
+        
         print("Plots saved in:", plot_dir)
 
     def plot_losses_and_lrs(self, train_loss, valid_loss, lrs, config):
