@@ -5,6 +5,7 @@ https://github.com/ZitongYu/PhysFormer/blob/main/train_Physformer_160_VIPL.py
 
 We also thank the PhysBench authors for their open-source code based on the code
 of the original authors. Their code below provided a better reference for tuning loss
+
 parameters of interest and utilizing RSME as a validation loss:
 https://github.com/KegangWangCCNU/PhysBench/blob/main/benchmark_addition/PhysFormer_pure.ipynb
 
@@ -249,7 +250,8 @@ class PhysFormerTrainer(BaseTrainer):
                 gra_sharp = 2.0
     
                 # Use the new predict_with_uncertainty method
-                mean_ppg_test, std_ppg_test, _ = self.model.predict_with_uncertainty(data, gra_sharp, num_samples=20)
+                mean_ppg_test, std_ppg_test, _ = self.model.module.predict_with_uncertainty(data, gra_sharp, num_samples=20)
+
                 for idx in range(batch_size):
                     subj_index = test_batch[2][idx]
                     sort_index = int(test_batch[3][idx])
