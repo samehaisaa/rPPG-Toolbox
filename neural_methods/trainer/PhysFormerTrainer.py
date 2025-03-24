@@ -250,7 +250,7 @@ class PhysFormerTrainer(BaseTrainer):
                 gra_sharp = 2.0
     
                 # Use the new predict_with_uncertainty method
-                mean_ppg_test, std_ppg_test, _ = self.model.module.predict_with_uncertainty(data, gra_sharp, num_samples=20)
+                mean_ppg_test, std_ppg_test, _ = self.model.module.predict_with_uncertainty(data, gra_sharp, num_samples=100)
 
                 for idx in range(batch_size):
                     subj_index = test_batch[2][idx]
