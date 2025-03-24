@@ -73,23 +73,11 @@ class BaseTrainer:
                 # Plot the main prediction line
                 plt.plot(time, pred, 'b-', label='Predicted rPPG')
                 
-                # Create shaded regions for different confidence levels
-                # 1-sigma band (68% confidence interval)
-                upper_1sigma = pred + uncertainty
-                lower_1sigma = pred - uncertainty
-                plt.fill_between(time, lower_1sigma, upper_1sigma, color='blue', alpha=0.3, 
-                                label='68% Confidence')
-                
-                # 2-sigma band (95% confidence interval) - assuming Gaussian distribution
-                upper_2sigma = pred + 2 * uncertainty
-                lower_2sigma = pred - 2 * uncertainty
-                plt.fill_between(time, lower_2sigma, upper_2sigma, color='blue', alpha=0.1,
-                                label='95% Confidence')
-                
-                # Add ground truth if available
-                if labels is not None and subj in labels and sort_index in labels[subj]:
-                    label = labels[subj][sort_index]
-                    plt.plot(time[:len(label)], label, 'g-', label='Ground Truth')
+                # Create a single shaded region for the full uncertainty
+                upper_bound = pred + uncertainty
+                lower_bound = pred - uncertainty
+                plt.fill_between(time, lower_bound, upper_bound, color='blue', alpha=0.3, 
+                                label='Uncertainty')
                 
                 plt.title(f"Subject {subj}, Index {sort_index}")
                 plt.xlabel("Time")
@@ -104,7 +92,6 @@ class BaseTrainer:
                 plt.close()
         
         print("Plots saved in:", plot_dir)
-
     def plot_losses_and_lrs(self, train_loss, valid_loss, lrs, config):
 
         output_dir = os.path.join(config.LOG.PATH, config.TRAIN.DATA.EXP_DATA_NAME, 'plots')
