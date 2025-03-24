@@ -26,62 +26,62 @@ class BaseTrainer:
     def test(self):
         pass
 
-def save_test_outputs(self, predictions, uncertainties, labels, config):
-    import pickle
-    import os
-    import matplotlib.pyplot as plt
-
-    output_dir = config.TEST.OUTPUT_SAVE_DIR
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir, exist_ok=True)
+    def save_test_outputs(self, predictions, uncertainties, labels, config):
+        import pickle
+        import os
+        import matplotlib.pyplot as plt
     
-    # Filename ID to be used in any output files that get saved
-    if config.TOOLBOX_MODE == 'train_and_test':
-        filename_id = self.model_file_name
-    elif config.TOOLBOX_MODE == 'only_test':
-        model_file_root = config.INFERENCE.MODEL_PATH.split("/")[-1].split(".pth")[0]
-        filename_id = model_file_root + "_" + config.TEST.DATA.DATASET
-    else:
-        raise ValueError('Metrics.py evaluation only supports train_and_test and only_test!')
+        output_dir = config.TEST.OUTPUT_SAVE_DIR
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # Filename ID to be used in any output files that get saved
+        if config.TOOLBOX_MODE == 'train_and_test':
+            filename_id = self.model_file_name
+        elif config.TOOLBOX_MODE == 'only_test':
+            model_file_root = config.INFERENCE.MODEL_PATH.split("/")[-1].split(".pth")[0]
+            filename_id = model_file_root + "_" + config.TEST.DATA.DATASET
+        else:
+            raise ValueError('Metrics.py evaluation only supports train_and_test and only_test!')
+        
+        output_path = os.path.join(output_dir, filename_id + '_outputs.pickle')
     
-    output_path = os.path.join(output_dir, filename_id + '_outputs.pickle')
-
-    data = dict()
-    data['predictions'] = predictions
-    data['uncertainties'] = uncertainties
-    data['labels'] = labels
-    data['label_type'] = config.TEST.DATA.PREPROCESS.LABEL_TYPE
-    data['fs'] = config.TEST.DATA.FS
-
-    with open(output_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-    print('Saving outputs to:', output_path)
-
-    # Plot the rPPG predictions with uncertainty error bars.
-    plot_dir = os.path.join(output_dir, "plots")
-    if not os.path.exists(plot_dir):
-        os.makedirs(plot_dir, exist_ok=True)
-
-    for subj in predictions:
-        for sort_index in predictions[subj]:
-            pred = predictions[subj][sort_index]
-            uncertainty = uncertainties[subj][sort_index]
-            time = range(len(pred))
-            
-            plt.figure()
-            plt.errorbar(time, pred, yerr=uncertainty, fmt='-o', ecolor='r', capsize=2, label='Predicted rPPG')
-            plt.title(f"Subject {subj}, Index {sort_index}")
-            plt.xlabel("Time")
-            plt.ylabel("rPPG")
-            plt.legend()
-            plt.tight_layout()
-            
-            plot_path = os.path.join(plot_dir, f"subj_{subj}_index_{sort_index}.png")
-            plt.savefig(plot_path)
-            plt.close()
-
-    print("Plots saved in:", plot_dir)
+        data = dict()
+        data['predictions'] = predictions
+        data['uncertainties'] = uncertainties
+        data['labels'] = labels
+        data['label_type'] = config.TEST.DATA.PREPROCESS.LABEL_TYPE
+        data['fs'] = config.TEST.DATA.FS
+    
+        with open(output_path, 'wb') as handle:
+            pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    
+        print('Saving outputs to:', output_path)
+    
+        # Plot the rPPG predictions with uncertainty error bars.
+        plot_dir = os.path.join(output_dir, "plots")
+        if not os.path.exists(plot_dir):
+            os.makedirs(plot_dir, exist_ok=True)
+    
+        for subj in predictions:
+            for sort_index in predictions[subj]:
+                pred = predictions[subj][sort_index]
+                uncertainty = uncertainties[subj][sort_index]
+                time = range(len(pred))
+                
+                plt.figure()
+                plt.errorbar(time, pred, yerr=uncertainty, fmt='-o', ecolor='r', capsize=2, label='Predicted rPPG')
+                plt.title(f"Subject {subj}, Index {sort_index}")
+                plt.xlabel("Time")
+                plt.ylabel("rPPG")
+                plt.legend()
+                plt.tight_layout()
+                
+                plot_path = os.path.join(plot_dir, f"subj_{subj}_index_{sort_index}.png")
+                plt.savefig(plot_path)
+                plt.close()
+    
+        print("Plots saved in:", plot_dir)
 
     def plot_losses_and_lrs(self, train_loss, valid_loss, lrs, config):
 
