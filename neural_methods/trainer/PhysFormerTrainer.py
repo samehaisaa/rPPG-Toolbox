@@ -264,7 +264,7 @@ class PhysFormerTrainer(BaseTrainer):
                     labels[subj_index][sort_index] = label[idx].cpu().numpy()
 
         print('')
-        calculate_metrics(predictions, labels, self.config)
+        #calculate_metrics(predictions, labels, self.config)
         if self.config.TEST.OUTPUT_SAVE_DIR:  # saving test outputs
             self.save_test_outputs(predictions, uncertainties, labels, self.config)
 
