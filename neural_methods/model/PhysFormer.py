@@ -13,6 +13,14 @@ from torch import nn
 from torch import Tensor 
 from torch.nn import functional as F
 import math
+import contextlib
+import numpy as np
+from typing import Optional
+import torch
+from torch import nn
+from torch import Tensor 
+from torch.nn import functional as F
+import math
 
 def as_tuple(x):
     return x if isinstance(x, tuple) else (x, x)
@@ -311,3 +319,52 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
         rPPG = rPPG.squeeze(1)
         
         return rPPG, Score1, Score2, Score3
+    # ------------------ Uncertainty estimation using MC Dropout ------------------
+    @contextlib.contextmanager
+    def mc_dropout_mode(self):
+        """
+        Temporarily set dropout layers to train mode (to sample dropout)
+        while keeping BatchNorm layers in evaluation mode.
+        """
+        dropout_modes = {}
+        bn_modes = {}
+        for m in self.modules():
+            if isinstance(m, nn.Dropout):
+                dropout_modes[m] = m.training
+                m.train()  # enable dropout sampling
+            elif isinstance(m, nn.modules.batchnorm._BatchNorm):
+                bn_modes[m] = m.training
+                m.eval()   # keep BN fixed
+        try:
+            yield
+        finally:
+            for m, mode in dropout_modes.items():
+                m.train(mode)
+            for m, mode in bn_modes.items():
+                m.train(mode)
+
+    def predict_with_uncertainty(self, x, gra_sharp, num_samples: int = 10):
+        """
+        Compute rPPG predictions and uncertainty estimates via MC dropout.
+        
+        Args:
+            x: input tensor.
+            gra_sharp: additional input required by the network.
+            num_samples: number of stochastic forward passes.
+            
+        Returns:
+            mean_pred: mean rPPG prediction across samples.
+            std_pred: standard deviation (uncertainty) per timestep.
+            scores: attention scores from the final transformer block (from the last forward pass).
+        """
+        preds = []
+        # Use the context manager to enable dropout sampling
+        with self.mc_dropout_mode():
+            for _ in range(num_samples):
+                rPPG, Score1, Score2, Score3 = self.forward(x, gra_sharp)
+                preds.append(rPPG)
+        preds = torch.stack(preds, dim=0)  # shape: [num_samples, B, T]
+        mean_pred = preds.mean(dim=0)       # mean over samples
+        std_pred = preds.std(dim=0)         # std deviation as uncertainty measure
+        # You can choose which attention scores to return; here we return the last block's score.
+        return mean_pred, std_pred, Score3
