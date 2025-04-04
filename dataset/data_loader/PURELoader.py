@@ -44,18 +44,33 @@ class PURELoader(BaseLoader):
         """
         super().__init__(name, data_path, config_data, device)
 
+    import re
+    
     def get_raw_data(self, data_path):
-        """Returns data directories under the path(For PURE dataset)."""
-
+        """Returns data directories under the path (For PURE dataset)."""
+    
         data_dirs = glob.glob(data_path + os.sep + "*-*")
         if not data_dirs:
             raise ValueError(self.dataset_name + " data paths empty!")
+    
         dirs = list()
         for data_dir in data_dirs:
-            subject_trail_val = os.path.split(data_dir)[-1].replace('-', '')
-            index = int(subject_trail_val)
-            subject = int(subject_trail_val[0:2])
+            dir_name = os.path.split(data_dir)[-1]
+            
+            # Vérifie si le nom suit le format NN-NN où N est un chiffre
+            if not re.fullmatch(r"\d{2}-\d{2}", dir_name):
+                continue  # ignore les fichiers comme datasetmetadata.json, etc.
+    
+            subject_trail_val = dir_name.replace('-', '')
+            
+            try:
+                index = int(subject_trail_val)
+                subject = int(subject_trail_val[0:2])
+            except ValueError:
+                continue  # ignore les dossiers au format incorrect
+    
             dirs.append({"index": index, "path": data_dir, "subject": subject})
+    
         return dirs
 
     def split_raw_data(self, data_dirs, begin, end):
