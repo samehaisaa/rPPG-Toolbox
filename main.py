@@ -3,6 +3,7 @@
 import argparse
 import random
 import time
+import os
 
 import numpy as np
 import torch
@@ -11,7 +12,8 @@ from dataset import data_loader
 from neural_methods import trainer
 from unsupervised_methods.unsupervised_predictor import unsupervised_predict
 from torch.utils.data import DataLoader
-
+import neural_methods.trainer.PhysFormerTrainer
+from visualization import plot_bvp_with_confidence, plot_hr_distribution
 RANDOM_SEED = 100
 torch.manual_seed(RANDOM_SEED)
 torch.cuda.manual_seed(RANDOM_SEED)
@@ -138,6 +140,94 @@ def unsupervised_method_inference(config, data_loader):
             raise ValueError("Not supported unsupervised method!")
 
 
+def main(config):
+    # ... setup code (logging, device, etc.) ...
+
+    # Set random seeds for reproducibility
+    if config.TOOLBOX_MODE == "train_and_test":
+        # ... training logic ...
+        pass # Placeholder
+    elif config.TOOLBOX_MODE == "only_test":
+        # ... testing logic for supervised models ...
+        pass # Placeholder
+    elif config.TOOLBOX_MODE == "unsupervised_method":
+        # === Load data ===
+        data_loader_dict = data_loader.unsupervised_data_loader(config=config)
+        
+        # === Run prediction === 
+        # Assuming unsupervised_predict is called for each method in config.UNSUPERVISED.METHOD
+        # We focus on the CHROM case here
+        method_name = "CHROM" # Or get from loop/config
+        if method_name in config.UNSUPERVISED.METHOD:
+            print(f"Running prediction for: {method_name}")
+            results = unsupervised_predict(config, data_loader_dict, method_name)
+            print(f"Prediction finished for: {method_name}")
+            
+            # --- Visualization --- 
+            if method_name == "CHROM" and 'confidence_bands' in results:
+                print("Generating visualizations for CHROM perturbation results...")
+                # Example: Visualize results for the first video item (index 0)
+                item_index_to_plot = 0
+                fs = float(config.UNSUPERVISED.DATA.FS)
+                output_dir = os.path.join(config.LOG.PATH, "visualizations", method_name)
+                os.makedirs(output_dir, exist_ok=True)
+                
+                # Check if results exist for the selected item
+                if item_index_to_plot < len(results.get('confidence_bands', [])):
+                    # Plot BVP with confidence bands
+                    # Note: unsupervised_predict doesn't return individual mean BVPs per item
+                    # You might need to modify unsupervised_predict to store the mean BVP per item 
+                    # Or re-calculate it from the first element of perturbed_signals if needed.
+                    # For now, let's assume we can access the confidence bands correctly. 
+                    # We need the corresponding mean BVP signal which isn't directly in results dict per item.
+                    # A REFACTOR MIGHT BE NEEDED HERE in unsupervised_predictor to store BVP per item.
+                    # ---- Placeholder for accessing correct BVP and Bands ----
+                    # mean_bvp_item = # ... logic to get mean BVP for item_index_to_plot ...
+                    # conf_bands_item = results['confidence_bands'][item_index_to_plot]
+                    # plot_bvp_with_confidence(mean_bvp_item, conf_bands_item, fs,
+                    #                          title=f"CHROM BVP - Item {item_index_to_plot}",
+                    #                          save_path=os.path.join(output_dir, f"item_{item_index_to_plot}_bvp_confidence.png"))
+                    print(f"Placeholder: Would plot BVP confidence for item {item_index_to_plot}")
+                    # ---- End Placeholder ----
+                
+                    # Plot HR distribution for the first few windows of the first item
+                    hr_method_key = 'perturbed_hr_fft' if config.INFERENCE.EVALUATION_METHOD == "FFT" else 'perturbed_hr_peak'
+                    mean_hr_key = 'predict_hr_fft' if config.INFERENCE.EVALUATION_METHOD == "FFT" else 'predict_hr_peak'
+                    gt_hr_key = 'gt_hr_fft' if config.INFERENCE.EVALUATION_METHOD == "FFT" else 'gt_hr_peak'
+
+                    if hr_method_key in results and item_index_to_plot < len(results[hr_method_key]):
+                        perturbed_hrs_item = results[hr_method_key][item_index_to_plot]
+                        # Get corresponding mean HRs and GT HRs (need careful indexing based on windowing in predictor)
+                        # The current results structure stores flattened lists of HRs across all items/windows.
+                        # A REFACTOR IS NEEDED in unsupervised_predictor to store HRs per window/item.
+                        # ---- Placeholder for accessing correct HRs ----
+                        num_windows_to_plot = min(3, len(perturbed_hrs_item)) # Plot first 3 windows
+                        for window_idx in range(num_windows_to_plot):
+                            if window_idx < len(perturbed_hrs_item):
+                                perturbed_hrs_window = perturbed_hrs_item[window_idx]
+                                # mean_hr_window = # ... logic to get mean HR for item_index_to_plot, window_idx ...
+                                # gt_hr_window = # ... logic to get GT HR for item_index_to_plot, window_idx ...
+                                plot_hr_distribution(perturbed_hrs_window, 
+                                                     mean_hr=None, # Placeholder 
+                                                     gt_hr=None, # Placeholder
+                                                     title=f"CHROM HR Distribution - Item {item_index_to_plot}, Window {window_idx}",
+                                                     save_path=os.path.join(output_dir, f"item_{item_index_to_plot}_window_{window_idx}_hr_dist.png"))
+                        # ---- End Placeholder ----        
+                    else:
+                         print(f"Could not find perturbed HR data ('{hr_method_key}') for item {item_index_to_plot}.")
+                else:
+                     print(f"Item index {item_index_to_plot} out of range for visualization.")
+            
+            # Potentially call evaluation metrics calculation here after prediction
+            # e.g., calculate_metrics(results, config) # Assuming such a function exists
+            
+        else:
+            print(f"Skipping prediction for {method_name} as it's not in config.UNSUPERVISED.METHOD")
+            
+    else:
+        raise ValueError("Unsupported TOOLBOX_MODE!")
+
+
 if __name__ == "__main__":
     # parse arguments.
     parser = argparse.ArgumentParser()
@@ -148,6 +238,7 @@ if __name__ == "__main__":
 
     # configurations.
     config = get_config(args)
+    print('Configuration:')
 
     data_loader_dict = dict() # dictionary of data loaders 
     if config.TOOLBOX_MODE == "train_and_test":
@@ -323,3 +414,5 @@ if __name__ == "__main__":
         unsupervised_method_inference(config, data_loader_dict)
     else:
         print("TOOLBOX_MODE only support train_and_test or only_test !", end='\n\n')
+
+    main(config)
