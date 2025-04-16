@@ -126,8 +126,6 @@ def unsupervised_predict(config, data_loader, method_name):
                 
                 eval_method = config.INFERENCE.EVALUATION_METHOD
                 hr_func = _calculate_fft_hr if eval_method == "FFT" else (_calculate_peak_hr if eval_method == "peak detection" else None)
-                hr_list_pred = predict_hr_fft_all if eval_method == "FFT" else (predict_hr_peak_all if eval_method == "peak detection" else None)
-                hr_list_gt = gt_hr_fft_all if eval_method == "FFT" else (gt_hr_peak_all if eval_method == "peak detection" else None)
                 pert_hr_list_key = 'perturbed_hr_fft' if eval_method == "FFT" else ('perturbed_hr_peak' if eval_method == "peak detection" else None)
                 pert_hr_window_list = perturbed_hrs_fft_window if eval_method == "FFT" else (perturbed_hrs_peak_window if eval_method == "peak detection" else None)
 
