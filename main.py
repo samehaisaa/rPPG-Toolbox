@@ -140,7 +140,7 @@ def unsupervised_method_inference(config, data_loader):
             raise ValueError("Not supported unsupervised method!")
 
 
-def main(config):
+def main(config, data_loader_dict):
     # ... setup code (logging, device, etc.) ...
 
     # Set random seeds for reproducibility
@@ -164,7 +164,8 @@ def main(config):
             print(f"Prediction finished for: {method_name}")
             
             # --- Visualization --- 
-            if method_name == "CHROM" and 'confidence_bands' in results:
+            # Ensure results is a list (as expected from refactored predictor)
+            if isinstance(results, list) and method_name == "CHROM":
                 print("Generating visualizations for CHROM perturbation results...")
                 # Example: Visualize results for the first video item (index 0)
                 item_index_to_plot = 0
@@ -172,54 +173,61 @@ def main(config):
                 output_dir = os.path.join(config.LOG.PATH, "visualizations", method_name)
                 os.makedirs(output_dir, exist_ok=True)
                 
-                # Check if results exist for the selected item
-                if item_index_to_plot < len(results.get('confidence_bands', [])):
-                    # Plot BVP with confidence bands
-                    # Note: unsupervised_predict doesn't return individual mean BVPs per item
-                    # You might need to modify unsupervised_predict to store the mean BVP per item 
-                    # Or re-calculate it from the first element of perturbed_signals if needed.
-                    # For now, let's assume we can access the confidence bands correctly. 
-                    # We need the corresponding mean BVP signal which isn't directly in results dict per item.
-                    # A REFACTOR MIGHT BE NEEDED HERE in unsupervised_predictor to store BVP per item.
-                    # ---- Placeholder for accessing correct BVP and Bands ----
-                    # mean_bvp_item = # ... logic to get mean BVP for item_index_to_plot ...
-                    # conf_bands_item = results['confidence_bands'][item_index_to_plot]
-                    # plot_bvp_with_confidence(mean_bvp_item, conf_bands_item, fs,
-                    #                          title=f"CHROM BVP - Item {item_index_to_plot}",
-                    #                          save_path=os.path.join(output_dir, f"item_{item_index_to_plot}_bvp_confidence.png"))
-                    print(f"Placeholder: Would plot BVP confidence for item {item_index_to_plot}")
-                    # ---- End Placeholder ----
-                
-                    # Plot HR distribution for the first few windows of the first item
-                    hr_method_key = 'perturbed_hr_fft' if config.INFERENCE.EVALUATION_METHOD == "FFT" else 'perturbed_hr_peak'
-                    mean_hr_key = 'predict_hr_fft' if config.INFERENCE.EVALUATION_METHOD == "FFT" else 'predict_hr_peak'
-                    gt_hr_key = 'gt_hr_fft' if config.INFERENCE.EVALUATION_METHOD == "FFT" else 'gt_hr_peak'
-
-                    if hr_method_key in results and item_index_to_plot < len(results[hr_method_key]):
-                        perturbed_hrs_item = results[hr_method_key][item_index_to_plot]
-                        # Get corresponding mean HRs and GT HRs (need careful indexing based on windowing in predictor)
-                        # The current results structure stores flattened lists of HRs across all items/windows.
-                        # A REFACTOR IS NEEDED in unsupervised_predictor to store HRs per window/item.
-                        # ---- Placeholder for accessing correct HRs ----
-                        num_windows_to_plot = min(3, len(perturbed_hrs_item)) # Plot first 3 windows
-                        for window_idx in range(num_windows_to_plot):
-                            if window_idx < len(perturbed_hrs_item):
-                                perturbed_hrs_window = perturbed_hrs_item[window_idx]
-                                # mean_hr_window = # ... logic to get mean HR for item_index_to_plot, window_idx ...
-                                # gt_hr_window = # ... logic to get GT HR for item_index_to_plot, window_idx ...
-                                plot_hr_distribution(perturbed_hrs_window, 
-                                                     mean_hr=None, # Placeholder 
-                                                     gt_hr=None, # Placeholder
-                                                     title=f"CHROM HR Distribution - Item {item_index_to_plot}, Window {window_idx}",
-                                                     save_path=os.path.join(output_dir, f"item_{item_index_to_plot}_window_{window_idx}_hr_dist.png"))
-                        # ---- End Placeholder ----        
+                # Check if results exist for the selected item index
+                if item_index_to_plot < len(results):
+                    item_data = results[item_index_to_plot]
+                    item_id = item_data.get('id', f'item_{item_index_to_plot}') # Get item ID if available
+                    
+                    # Plot BVP with confidence bands if available
+                    mean_bvp_item = item_data.get('mean_bvp')
+                    conf_bands_item = item_data.get('confidence_bands')
+                    if mean_bvp_item is not None and conf_bands_item is not None:
+                        plot_bvp_with_confidence(mean_bvp_item, conf_bands_item, fs,
+                                                 title=f"CHROM BVP - {item_id}",
+                                                 save_path=os.path.join(output_dir, f"{item_id}_bvp_confidence.png"))
                     else:
-                         print(f"Could not find perturbed HR data ('{hr_method_key}') for item {item_index_to_plot}.")
+                         print(f"Missing mean BVP or confidence bands for {item_id}. Cannot plot BVP confidence.")
+                
+                    # Plot HR distribution for the first few windows 
+                    hr_method_key = 'perturbed_hr_fft' if config.INFERENCE.EVALUATION_METHOD == "FFT" else ('perturbed_hr_peak' if config.INFERENCE.EVALUATION_METHOD == "peak detection" else None)
+                    mean_hr_key = 'hr_pred' # Key used within window_result
+                    gt_hr_key = 'hr_label'  # Key used within window_result
+                    
+                    windows_data = item_data.get('windows', [])
+                    if not windows_data:
+                         print(f"No window data found for {item_id}. Cannot plot HR distributions.")
+                    else:
+                         num_windows_to_plot = min(3, len(windows_data)) # Plot first 3 windows
+                         print(f"Plotting HR distributions for first {num_windows_to_plot} windows of {item_id}...")
+                         for window_idx in range(num_windows_to_plot):
+                            window_result = windows_data[window_idx]
+                            perturbed_hrs_window = window_result.get(hr_method_key)
+                            mean_hr_window = window_result.get(mean_hr_key)
+                            gt_hr_window = window_result.get(gt_hr_key)
+                            
+                            if perturbed_hrs_window:
+                                plot_hr_distribution(perturbed_hrs_window, 
+                                                     mean_hr=mean_hr_window, 
+                                                     gt_hr=gt_hr_window, 
+                                                     title=f"CHROM HR Distribution - {item_id}, Window {window_idx}",
+                                                     save_path=os.path.join(output_dir, f"{item_id}_window_{window_idx}_hr_dist.png"))
+                            else:
+                                 print(f"No perturbed HR data ('{hr_method_key}') found for {item_id}, Window {window_idx}.")
                 else:
-                     print(f"Item index {item_index_to_plot} out of range for visualization.")
-            
-            # Potentially call evaluation metrics calculation here after prediction
-            # e.g., calculate_metrics(results, config) # Assuming such a function exists
+                     print(f"Item index {item_index_to_plot} out of range for visualization (results length: {len(results)}).")
+            elif not isinstance(results, list):
+                 print(f"Warning: Expected list results from unsupervised_predict for {method_name}, but got {type(results)}. Skipping visualization.")
+                 
+            # --- Aggregate and Print Overall Metrics (Optional) --- 
+            # You might want to add logic here to loop through the structured 'results'
+            # list, extract all window-level metrics (hr_pred, hr_label, snr, macc),
+            # and calculate overall MAE, RMSE, Pearson, etc., similar to how it 
+            # might have been done before the refactoring. 
+            # Example placeholder:
+            # all_pred_hrs = [w['hr_pred'] for item in results for w in item['windows']] 
+            # all_gt_hrs = [w['hr_label'] for item in results for w in item['windows']]
+            # calculate_overall_metrics(all_pred_hrs, all_gt_hrs, config) # Fictional function
+            print("Placeholder: Aggregated metric calculation would go here.")
             
         else:
             print(f"Skipping prediction for {method_name} as it's not in config.UNSUPERVISED.METHOD")
@@ -239,6 +247,9 @@ if __name__ == "__main__":
     # configurations.
     config = get_config(args)
     print('Configuration:')
+    # Print the configuration content (optional)
+    # print(config)
+    # print("-----------------------------------------------------")
 
     data_loader_dict = dict() # dictionary of data loaders 
     if config.TOOLBOX_MODE == "train_and_test":
@@ -260,8 +271,7 @@ if __name__ == "__main__":
         elif config.TRAIN.DATA.DATASET == "iBVP":
             train_loader = data_loader.iBVPLoader.iBVPLoader
         else:
-            raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
-                             SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
+            raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
 
         # Create and initialize the train dataloader given the correct toolbox mode,
         # a supported dataset name, and a valid dataset paths
@@ -303,8 +313,7 @@ if __name__ == "__main__":
         elif config.VALID.DATA.DATASET is None and not config.TEST.USE_LAST_EPOCH:
             raise ValueError("Validation dataset not specified despite USE_LAST_EPOCH set to False!")
         else:
-            raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
-                             SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP")
+            raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP")
         
         # Create and initialize the valid dataloader given the correct toolbox mode,
         # a supported dataset name, and a valid dataset path
@@ -344,8 +353,7 @@ if __name__ == "__main__":
         elif config.TEST.DATA.DATASET == "iBVP":
             test_loader = data_loader.iBVPLoader.iBVPLoader
         else:
-            raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
-                             SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
+            raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
         
         if config.TOOLBOX_MODE == "train_and_test" and config.TEST.USE_LAST_EPOCH:
             print("Testing uses last epoch, validation dataset is not required.", end='\n\n')   
@@ -386,9 +394,12 @@ if __name__ == "__main__":
         elif config.UNSUPERVISED.DATA.DATASET == "iBVP":
             unsupervised_loader = data_loader.iBVPLoader.iBVPLoader
         else:
-            raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
-                             SCAMPS, BP4D+, UBFC-PHYS and iBVP.")
+            raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, SCAMPS, BP4D+, UBFC-PHYS and iBVP.")
         
+        # Check if data path exists for unsupervised
+        if not config.UNSUPERVISED.DATA.DATA_PATH or not os.path.isdir(config.UNSUPERVISED.DATA.DATA_PATH):
+             raise ValueError(f"Unsupervised data path not found or not specified: {config.UNSUPERVISED.DATA.DATA_PATH}")
+             
         unsupervised_data = unsupervised_loader(
             name="unsupervised",
             data_path=config.UNSUPERVISED.DATA.DATA_PATH,
@@ -397,7 +408,7 @@ if __name__ == "__main__":
         data_loader_dict["unsupervised"] = DataLoader(
             dataset=unsupervised_data,
             num_workers=4,
-            batch_size=1,
+            batch_size=1, # Typically 1 for unsupervised per-video processing
             shuffle=False,
             worker_init_fn=seed_worker,
             generator=general_generator
@@ -406,13 +417,7 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unsupported toolbox_mode! Currently support train_and_test or only_test or unsupervised_method.")
 
-    if config.TOOLBOX_MODE == "train_and_test":
-        train_and_test(config, data_loader_dict)
-    elif config.TOOLBOX_MODE == "only_test":
-        test(config, data_loader_dict)
-    elif config.TOOLBOX_MODE == "unsupervised_method":
-        unsupervised_method_inference(config, data_loader_dict)
-    else:
-        print("TOOLBOX_MODE only support train_and_test or only_test !", end='\n\n')
+    # Call the main logic after setting up data loaders
+    main(config, data_loader_dict)
 
-    main(config)
+    # Removed recursive call: main(config)
