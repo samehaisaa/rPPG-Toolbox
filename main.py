@@ -182,9 +182,23 @@ def main(config, data_loader_dict):
                     conf_bands_item = item_data.get('confidence_bands')
                     gt_bvp_item = item_data.get('gt_bvp') # Get the GT BVP
                     
+                    # Align lengths for plotting by truncating the longer signal (usually GT)
+                    aligned_gt_bvp = None
+                    if mean_bvp_item is not None and gt_bvp_item is not None:
+                         if len(mean_bvp_item) != len(gt_bvp_item):
+                              print(f"    Aligning lengths: Predicted BVP ({len(mean_bvp_item)}), GT BVP ({len(gt_bvp_item)}). Truncating GT.")
+                              min_len = min(len(mean_bvp_item), len(gt_bvp_item))
+                              # Truncate the GT signal to match the predicted length
+                              aligned_gt_bvp = gt_bvp_item[:min_len] 
+                              # Optional: could also truncate mean_bvp if it were longer
+                              # mean_bvp_item = mean_bvp_item[:min_len]
+                              # conf_bands_item = conf_bands_item[:, :min_len] if conf_bands_item is not None else None
+                         else:
+                              aligned_gt_bvp = gt_bvp_item # Lengths already match
+                    
                     if mean_bvp_item is not None and conf_bands_item is not None:
                         plot_bvp_with_confidence(mean_bvp_item, conf_bands_item, fs,
-                                                 gt_bvp_signal=gt_bvp_item, # Pass GT BVP
+                                                 gt_bvp_signal=aligned_gt_bvp, # Pass ALIGNED GT BVP
                                                  title=f"CHROM BVP - {item_id}",
                                                  save_path=os.path.join(output_dir, f"{item_id}_bvp_confidence.png"))
                     else:
