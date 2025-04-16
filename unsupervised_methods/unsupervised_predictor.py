@@ -73,10 +73,15 @@ def unsupervised_predict(config, data_loader, method_name):
                  continue 
 
             # --- Prepare result structure for this item --- 
+            item_id = f'batch_{batch_idx}_item_{idx}'
+            # --- Debug GT BVP --- 
+            print(f"DEBUG Predictor: Item {item_id} - labels_input type: {type(labels_input)}, shape: {getattr(labels_input, 'shape', 'N/A')}, first 5: {labels_input[:5] if hasattr(labels_input, '__len__') and len(labels_input)>0 else 'N/A'}")
+            
             item_result = {
-                'id': f'batch_{batch_idx}_item_{idx}', 
+                'id': item_id, 
                 'method': method_name,
                 'mean_bvp': BVP, # Store the calculated (mean) BVP
+                'gt_bvp': labels_input, # Store the ground truth BVP signal
                 'windows': [] # List to store results per window
             }
             if confidence_bands_item is not None:
