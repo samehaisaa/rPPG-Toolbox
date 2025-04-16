@@ -167,55 +167,57 @@ def main(config, data_loader_dict):
             # --- Visualization --- 
             # Ensure results is a list (as expected from refactored predictor)
             if isinstance(results, list) and method_name == "CHROM":
-                print("Generating visualizations for CHROM perturbation results...")
-                # Example: Visualize results for the first video item (index 0)
-                item_index_to_plot = 0
+                print(f"Generating visualizations for CHROM perturbation results (Total items: {len(results)})...")
                 fs = float(config.UNSUPERVISED.DATA.FS)
                 output_dir = os.path.join(config.LOG.PATH, "visualizations", method_name)
                 os.makedirs(output_dir, exist_ok=True)
                 
-                # Check if results exist for the selected item index
-                if item_index_to_plot < len(results):
-                    item_data = results[item_index_to_plot]
-                    item_id = item_data.get('id', f'item_{item_index_to_plot}') # Get item ID if available
+                # Loop through all items in the results list
+                for item_idx, item_data in enumerate(results):
+                    item_id = item_data.get('id', f'item_{item_idx}') # Get item ID if available
+                    print(f"  Processing visualizations for {item_id}...")
                     
-                    # Plot BVP with confidence bands if available
+                    # Plot BVP with confidence bands and GT BVP if available
                     mean_bvp_item = item_data.get('mean_bvp')
                     conf_bands_item = item_data.get('confidence_bands')
+                    gt_bvp_item = item_data.get('gt_bvp') # Get the GT BVP
+                    
                     if mean_bvp_item is not None and conf_bands_item is not None:
                         plot_bvp_with_confidence(mean_bvp_item, conf_bands_item, fs,
+                                                 gt_bvp_signal=gt_bvp_item, # Pass GT BVP
                                                  title=f"CHROM BVP - {item_id}",
                                                  save_path=os.path.join(output_dir, f"{item_id}_bvp_confidence.png"))
                     else:
-                         print(f"Missing mean BVP or confidence bands for {item_id}. Cannot plot BVP confidence.")
+                         print(f"    Skipping BVP confidence plot for {item_id} (Missing mean BVP or confidence bands).")
                 
-                    # Plot HR distribution for the first few windows 
+                    # Plot HR distribution for ALL windows 
                     hr_method_key = 'perturbed_hr_fft' if config.INFERENCE.EVALUATION_METHOD == "FFT" else ('perturbed_hr_peak' if config.INFERENCE.EVALUATION_METHOD == "peak detection" else None)
                     mean_hr_key = 'hr_pred' # Key used within window_result
                     gt_hr_key = 'hr_label'  # Key used within window_result
                     
                     windows_data = item_data.get('windows', [])
                     if not windows_data:
-                         print(f"No window data found for {item_id}. Cannot plot HR distributions.")
+                         print(f"    No window data found for {item_id}. Cannot plot HR distributions.")
                     else:
-                         num_windows_to_plot = min(3, len(windows_data)) # Plot first 3 windows
-                         print(f"Plotting HR distributions for first {num_windows_to_plot} windows of {item_id}...")
-                         for window_idx in range(num_windows_to_plot):
-                            window_result = windows_data[window_idx]
+                         print(f"    Plotting HR distributions for {len(windows_data)} windows of {item_id}...")
+                         # Loop through ALL windows
+                         for window_idx, window_result in enumerate(windows_data):
+                            # window_idx = window_result.get('window_index') # Use stored index if needed
                             perturbed_hrs_window = window_result.get(hr_method_key)
                             mean_hr_window = window_result.get(mean_hr_key)
                             gt_hr_window = window_result.get(gt_hr_key)
                             
-                            if perturbed_hrs_window:
+                            if perturbed_hrs_window is not None: # Check if the key exists and has data
                                 plot_hr_distribution(perturbed_hrs_window, 
                                                      mean_hr=mean_hr_window, 
                                                      gt_hr=gt_hr_window, 
                                                      title=f"CHROM HR Distribution - {item_id}, Window {window_idx}",
                                                      save_path=os.path.join(output_dir, f"{item_id}_window_{window_idx}_hr_dist.png"))
                             else:
-                                 print(f"No perturbed HR data ('{hr_method_key}') found for {item_id}, Window {window_idx}.")
-                else:
-                     print(f"Item index {item_index_to_plot} out of range for visualization (results length: {len(results)}).")
+                                 print(f"      Skipping HR distribution for Window {window_idx} (No data for '{hr_method_key}').")
+                                 
+                print(f"Finished generating visualizations.")
+
             elif not isinstance(results, list):
                  print(f"Warning: Expected list results from unsupervised_predict for {method_name}, but got {type(results)}. Skipping visualization.")
                  
