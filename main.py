@@ -152,7 +152,8 @@ def main(config, data_loader_dict):
         pass # Placeholder
     elif config.TOOLBOX_MODE == "unsupervised_method":
         # === Load data ===
-        data_loader_dict = data_loader.unsupervised_data_loader(config=config)
+        # data_loader_dict is now passed as an argument, no need to recreate it here
+        # data_loader_dict = data_loader.unsupervised_data_loader(config=config)
         
         # === Run prediction === 
         # Assuming unsupervised_predict is called for each method in config.UNSUPERVISED.METHOD
