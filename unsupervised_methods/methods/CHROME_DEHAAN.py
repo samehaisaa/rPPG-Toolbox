@@ -5,6 +5,7 @@ import numpy as np
 import math
 from scipy import signal
 import unsupervised_methods.utils as utils
+from unsupervised_methods.perturbation import get_perturbation_function, add_gaussian_noise
 
 def _calculate_bvp_from_rgb(RGB, FS, LPF, HPF, WinSec):
     """Core CHROM BVP calculation logic for a given RGB signal."""
@@ -126,37 +127,75 @@ def _calculate_bvp_from_rgb(RGB, FS, LPF, HPF, WinSec):
     actual_len = WinS # The last start position marks the end of computed signal
     return S[:actual_len]
 
-def CHROME_DEHAAN(frames, FS, n_perturbations=10, noise_std_fraction=0.01):
-    """Enhanced CHROM method with uncertainty quantification via input perturbation."""
+def process_video(frames):
+    """Process video frames to get RGB signals."""
+    return utils.process_video(frames)
+
+def CHROME_DEHAAN(frames, FS, n_perturbations=10, noise_std_fraction=0.01, perturbation_type='gaussian_noise', perturbation_params=None):
+    """
+    Enhanced CHROM method with uncertainty quantification via input perturbation.
+    
+    Args:
+        frames: Video frames array of shape (T, H, W, C)
+        FS: Sampling frequency
+        n_perturbations: Number of perturbations to run
+        noise_std_fraction: Standard deviation of noise as fraction of signal (used for gaussian_noise)
+        perturbation_type: Type of perturbation to apply ('gaussian_noise', 'blur', 'brightness', etc.)
+        perturbation_params: Dictionary of parameters for the perturbation function
+        
+    Returns:
+        Dictionary containing BVP signal, confidence bands, and all perturbed signals
+    """
     LPF = 0.7
     HPF = 2.5
     WinSec = 1.6
 
-    RGB_original = process_video(frames)
+    # Get perturbation function
+    try:
+        perturbation_func = get_perturbation_function(perturbation_type)
+    except ValueError:
+        print(f"Warning: Unknown perturbation type '{perturbation_type}'. Falling back to gaussian noise.")
+        perturbation_func = add_gaussian_noise
+        perturbation_params = {'noise_std_fraction': noise_std_fraction}
+    
+    # Initialize default parameters if not provided
+    if perturbation_params is None:
+        if perturbation_type == 'gaussian_noise':
+            perturbation_params = {'noise_std_fraction': noise_std_fraction}
+        else:
+            perturbation_params = {}
+
+    # Process original video
+    original_frames = frames.copy()
+    RGB_original = process_video(original_frames)
     if RGB_original.size == 0:
         print("Error: process_video returned empty RGB array.")
         return {'BVP': np.array([]), 'confidence_bands': np.array([[], []]), 'perturbed_signals': np.array([])}
-        
-    rgb_mean = np.mean(np.abs(RGB_original)) # Estimate signal magnitude
-    noise_std = noise_std_fraction * rgb_mean # Scale noise to signal
     
-    perturbed_bvp_signals = []
-    
-    # Calculate original BVP first
+    # Calculate original BVP
     original_bvp = _calculate_bvp_from_rgb(RGB_original, FS, LPF, HPF, WinSec)
     if original_bvp.size == 0:
         print("Warning: Original BVP calculation resulted in empty array.")
-        # Decide how to handle this - return empty or try perturbations?
-        # For now, return empty based on original failure.
         return {'BVP': np.array([]), 'confidence_bands': np.array([[], []]), 'perturbed_signals': np.array([])}
-        
-    perturbed_bvp_signals.append(original_bvp)
+    
+    perturbed_bvp_signals = [original_bvp]  # Start with original BVP
     
     # Generate and process perturbed signals
-    for _ in range(n_perturbations):
-        noise = np.random.normal(0, noise_std, RGB_original.shape)
-        RGB_perturbed = RGB_original + noise
+    for i in range(n_perturbations):
+        # Apply perturbation to the frames
+        perturbed_frames = perturbation_func(original_frames.copy(), **perturbation_params)
+        
+        # Process perturbed frames
+        RGB_perturbed = process_video(perturbed_frames)
+        if RGB_perturbed.size == 0:
+            print(f"Warning: Perturbed frames processing failed for perturbation {i}. Skipping.")
+            continue
+        
+        # Calculate BVP from perturbed RGB
         bvp_perturbed = _calculate_bvp_from_rgb(RGB_perturbed, FS, LPF, HPF, WinSec)
+        if bvp_perturbed.size == 0:
+            print(f"Warning: BVP calculation failed for perturbation {i}. Skipping.")
+            continue
         
         # Ensure perturbed BVP has same length as original via padding/truncation if needed
         if len(bvp_perturbed) != len(original_bvp):
@@ -183,23 +222,7 @@ def CHROME_DEHAAN(frames, FS, n_perturbations=10, noise_std_fraction=0.01):
     return {
         'BVP': mean_bvp,  # Mean BVP signal from perturbations
         'confidence_bands': confidence_bands,  # Lower and upper confidence bounds
-        'perturbed_signals': perturbed_bvp_signals # Return all generated signals
+        'perturbed_signals': perturbed_bvp_signals, # Return all generated signals
+        'perturbation_type': perturbation_type  # Include the type of perturbation used
     }
-
-def process_video(frames):
-    "Calculates the average value of each frame."
-    RGB = []
-    for frame in frames:
-        # Added check for empty frame
-        if frame is None or frame.size == 0:
-            print("Warning: Encountered empty frame, skipping.")
-            continue 
-        sum_val = np.sum(np.sum(frame, axis=0), axis=0)
-        # Check for potential division by zero if frame dimensions are 0
-        num_pixels = frame.shape[0] * frame.shape[1]
-        if num_pixels == 0:
-             print("Warning: Frame with zero pixels encountered, skipping.")
-             continue
-        RGB.append(sum_val / num_pixels)
-    return np.asarray(RGB)
     
