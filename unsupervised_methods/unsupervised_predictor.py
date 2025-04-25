@@ -79,6 +79,7 @@ def unsupervised_predict(config, data_loader, method_name):
                             perturbation_params['quality'] = param_config.QUALITY if hasattr(param_config, 'QUALITY') else 80
                     
                     # Call CHROME_DEHAAN with perturbation configs
+                    print(f"Processing video with shape: {np.shape(data_input)}")
                     result = CHROME_DEHAAN(
                         data_input, 
                         config.UNSUPERVISED.DATA.FS,
