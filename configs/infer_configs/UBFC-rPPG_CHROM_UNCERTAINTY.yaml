@@ -22,7 +22,7 @@ UNSUPERVISED:
       DATA_AUG: ['None']  # 'None' or 'Motion' is supported
       LABEL_TYPE: Raw
       DO_CHUNK: True
-      CHUNK_LENGTH: 180
+      CHUNK_LENGTH: 144
       CROP_FACE:
         DO_CROP_FACE: True
         BACKEND: 'HC'  # HC for Haar Cascade, RF for RetinaFace, Y5F for YOLO5Face
