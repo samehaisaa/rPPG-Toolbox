@@ -76,6 +76,7 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
     config = get_config(args)
     
     # Set common output directory
+    config.defrost()
     config.LOG.PATH = output_dir
     
     # Dictionary to store results for each perturbation type
