@@ -168,12 +168,12 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
         # Generate individual visualizations
         print(f"Generating visualizations for {pert_type}...")
         for i, result in enumerate(results):
-            item_id = result['item_id']
+            item_id = result['id']
             
             # Plot BVP with confidence bands
-            if result['bvp_mean'] is not None and result['confidence_bands'] is not None:
+            if result.get('mean_bvp') is not None and result.get('confidence_bands') is not None:
                 plot_bvp_with_confidence(
-                    result['bvp_mean'],
+                    result['mean_bvp'],
                     result['confidence_bands'],
                     experiment_config.UNSUPERVISED.DATA.FS,
                     gt_bvp_signal=result['gt_bvp'],
@@ -204,7 +204,7 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
     all_item_ids = set()
     for results in all_results.values():
         for result in results:
-            all_item_ids.add(result['item_id'])
+            all_item_ids.add(result['id'])
     
     # Generate comparison plots for each item
     for item_id in all_item_ids:
@@ -212,7 +212,7 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
         max_windows = 0
         for results in all_results.values():
             for result in results:
-                if result['item_id'] == item_id:
+                if result['id'] == item_id:
                     max_windows = max(max_windows, len(result['windows']))
                     break
         
