@@ -205,14 +205,17 @@ def unsupervised_predict(config, data_loader, method_name):
                                     hr_perturbed = hr_func(perturbed_bvp_window, fs=config.UNSUPERVISED.DATA.FS)
                                     current_pert_hrs.append(hr_perturbed)
                                 except Exception as e:
-                                    # print(f"Error calculating Perturbed HR ({eval_method}) for window {i}: {e}")
                                     current_pert_hrs.append(np.nan) 
                             else:
                                 current_pert_hrs.append(np.nan) # Append NaN for empty perturbed window
                         else:
                             current_pert_hrs.append(np.nan) # Append NaN if window exceeds perturbed signal
-                    if pert_hr_list_key:
-                         window_result[pert_hr_list_key] = current_pert_hrs
+                    
+                    # Store perturbed HR values in the window dictionary
+                    if eval_method == "FFT":
+                        window_result['perturbed_hr_fft'] = current_pert_hrs
+                    elif eval_method == "peak detection":
+                        window_result['perturbed_hr_peak'] = current_pert_hrs
 
                 # Calculate SNR and MACC using Mean BVP
                 if hr_label is not None: # Requires GT HR
