@@ -1,4 +1,5 @@
 """Unsupervised learning methods including POS, GREEN, CHROME, ICA, LGI and PBV."""
+import os
 import numpy as np
 # from evaluation.post_process import *  # Change from wildcard import
 from evaluation.post_process import _calculate_fft_hr, _calculate_peak_hr, _calculate_SNR, _compute_macc # Explicit imports
@@ -11,6 +12,10 @@ from unsupervised_methods.methods.POS_WANG import *
 from unsupervised_methods.methods.OMIT import *
 from tqdm import tqdm
 # from evaluation.BlandAltmanPy import BlandAltman # This seems unused now
+from evaluation.metrics import calculate_metrics
+from unsupervised_methods import utils
+from evaluation.post_process import calculate_hr_fft, calculate_hr_peakdetection
+from visualization import plot_bvp_with_confidence, plot_hr_distribution
 
 def unsupervised_predict(config, data_loader, method_name):
     """ Model evaluation on the testing dataset.
@@ -36,20 +41,58 @@ def unsupervised_predict(config, data_loader, method_name):
             BVP = None # Initialize BVP
             all_perturbed_bvps = None # Initialize storage for perturbed signals for this item
             confidence_bands_item = None # For CHROM
+            perturbation_type = None
             
             # --- Run selected rPPG method --- 
             try:
                 if method_name == "POS":
                     BVP = POS_WANG(data_input, config.UNSUPERVISED.DATA.FS)
                 elif method_name == "CHROM":
+                    # Get perturbation configurations
                     n_perturbations = config.UNSUPERVISED.CHROM_PERTURBATIONS.N_PERTURBATIONS if hasattr(config.UNSUPERVISED, 'CHROM_PERTURBATIONS') else 10
                     noise_std_fraction = config.UNSUPERVISED.CHROM_PERTURBATIONS.NOISE_STD_FRACTION if hasattr(config.UNSUPERVISED, 'CHROM_PERTURBATIONS') else 0.01
-                    result = CHROME_DEHAAN(data_input, config.UNSUPERVISED.DATA.FS,
-                                           n_perturbations=n_perturbations, 
-                                           noise_std_fraction=noise_std_fraction)
+                    
+                    # Get perturbation type if specified in config
+                    if hasattr(config.UNSUPERVISED, 'CHROM_PERTURBATIONS') and hasattr(config.UNSUPERVISED.CHROM_PERTURBATIONS, 'TYPE'):
+                        perturbation_type = config.UNSUPERVISED.CHROM_PERTURBATIONS.TYPE
+                    else:
+                        perturbation_type = 'gaussian_noise'
+                    
+                    # Get perturbation parameters if specified in config
+                    perturbation_params = {}
+                    if hasattr(config.UNSUPERVISED, 'CHROM_PERTURBATIONS') and hasattr(config.UNSUPERVISED.CHROM_PERTURBATIONS, 'PARAMS'):
+                        param_config = config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS
+                        
+                        # Handle specific parameters based on perturbation type
+                        if perturbation_type == 'gaussian_noise':
+                            perturbation_params['noise_std_fraction'] = noise_std_fraction
+                        elif perturbation_type == 'blur':
+                            perturbation_params['kernel_size'] = param_config.KERNEL_SIZE if hasattr(param_config, 'KERNEL_SIZE') else 3
+                        elif perturbation_type == 'brightness':
+                            perturbation_params['brightness_factor'] = param_config.BRIGHTNESS_FACTOR if hasattr(param_config, 'BRIGHTNESS_FACTOR') else 0.1
+                        elif perturbation_type == 'crop':
+                            perturbation_params['crop_fraction'] = param_config.CROP_FRACTION if hasattr(param_config, 'CROP_FRACTION') else 0.1
+                        elif perturbation_type == 'rotation':
+                            perturbation_params['angle_range'] = param_config.ANGLE_RANGE if hasattr(param_config, 'ANGLE_RANGE') else 5
+                        elif perturbation_type == 'color_jitter':
+                            perturbation_params['factor'] = param_config.FACTOR if hasattr(param_config, 'FACTOR') else 0.1
+                        elif perturbation_type == 'compression':
+                            perturbation_params['quality'] = param_config.QUALITY if hasattr(param_config, 'QUALITY') else 80
+                    
+                    # Call CHROME_DEHAAN with perturbation configs
+                    result = CHROME_DEHAAN(
+                        data_input, 
+                        config.UNSUPERVISED.DATA.FS,
+                        n_perturbations=n_perturbations, 
+                        noise_std_fraction=noise_std_fraction,
+                        perturbation_type=perturbation_type,
+                        perturbation_params=perturbation_params
+                    )
+                    
                     BVP = result['BVP']
                     all_perturbed_bvps = result.get('perturbed_signals') 
                     confidence_bands_item = result.get('confidence_bands')
+                    perturbation_type = result.get('perturbation_type', perturbation_type)
                 elif method_name == "ICA":
                     BVP = ICA_POH(data_input, config.UNSUPERVISED.DATA.FS)
                 elif method_name == "GREEN":
@@ -130,8 +173,8 @@ def unsupervised_predict(config, data_loader, method_name):
                 perturbed_hrs_peak_window = []
                 
                 eval_method = config.INFERENCE.EVALUATION_METHOD
-                hr_func = _calculate_fft_hr if eval_method == "FFT" else (_calculate_peak_hr if eval_method == "peak detection" else None)
-                pert_hr_list_key = 'perturbed_hr_fft' if eval_method == "FFT" else ('perturbed_hr_peak' if eval_method == "peak detection" else None)
+                hr_func = calculate_hr_fft if eval_method == "FFT" else (calculate_hr_peakdetection if eval_method == "peak detection" else None)
+                pert_hr_list_key = None
                 pert_hr_window_list = perturbed_hrs_fft_window if eval_method == "FFT" else (perturbed_hrs_peak_window if eval_method == "peak detection" else None)
 
                 # Calculate HR for Mean BVP
