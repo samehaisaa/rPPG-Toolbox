@@ -229,6 +229,12 @@ _C.UNSUPERVISED = CN()
 _C.UNSUPERVISED.METHOD = []
 _C.UNSUPERVISED.OUTPUT_SAVE_DIR = ''
 _C.UNSUPERVISED.METRICS = []
+# add default CHROM_PERTURBATIONS so it exists before merging
+_C.UNSUPERVISED.CHROM_PERTURBATIONS = CN()
+_C.UNSUPERVISED.CHROM_PERTURBATIONS.TYPE = 'gaussian_noise'
+_C.UNSUPERVISED.CHROM_PERTURBATIONS.N_PERTURBATIONS = 30
+_C.UNSUPERVISED.CHROM_PERTURBATIONS.NOISE_STD_FRACTION = 0.01
+_C.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS = CN()
 # Unsupervised.Data settings
 _C.UNSUPERVISED.DATA = CN()
 _C.UNSUPERVISED.DATA.INFO = CN()
@@ -280,7 +286,8 @@ _C.UNSUPERVISED.DATA.PREPROCESS.RESIZE.W = 128
 _C.UNSUPERVISED.DATA.PREPROCESS.RESIZE.H = 128
 _C.UNSUPERVISED.DATA.PREPROCESS.IBVP = CN()
 _C.UNSUPERVISED.DATA.PREPROCESS.IBVP.DATA_MODE = 'RGB'
-### -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
 # Model settings
 # -----------------------------------------------------------------------------
 _C.MODEL = CN()
