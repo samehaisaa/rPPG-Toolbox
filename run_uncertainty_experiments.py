@@ -11,23 +11,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 from shutil import copyfile
 from yacs.config import CfgNode as CN
-import numpy as np
 import torch
+from torch.utils.data import DataLoader
 from config import get_config
 from dataset import data_loader
 from neural_methods import trainer
 from unsupervised_methods.unsupervised_predictor import unsupervised_predict
-from torch.utils.data import DataLoader
 
-import dataset.data_loader as data_loader
-from config import get_config
-from unsupervised_methods.unsupervised_predictor import unsupervised_predict
 from visualization import (
     plot_bvp_with_confidence, 
     plot_hr_distribution, 
     plot_perturbation_comparison,
     plot_uncertainty_vs_error
 )
+
+# For reproducibility
+def seed_worker(worker_id):
+    worker_seed = 42
+    np.random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
 
 def update_config_perturbation(config, perturbation_type, params=None):
     """
@@ -141,17 +143,17 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
             # Create dataset and dataloader for unsupervised method
             unsupervised_data = unsupervised_loader(
                 name="unsupervised",
-                config_data=experiment_config,
-                training=False,
-                unsupervised=True
+                data_path=experiment_config.UNSUPERVISED.DATA.DATA_PATH,
+                config_data=experiment_config.UNSUPERVISED.DATA,
+                device=experiment_config.DEVICE
             )
             
             data_loaders["unsupervised"] = DataLoader(
                 dataset=unsupervised_data,
                 batch_size=1,
                 shuffle=False,
-                num_workers=8,
-                pin_memory=True
+                num_workers=4,
+                worker_init_fn=seed_worker
             )
         else:
             data_loaders["unsupervised"] = None
