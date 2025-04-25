@@ -14,7 +14,6 @@ from tqdm import tqdm
 # from evaluation.BlandAltmanPy import BlandAltman # This seems unused now
 from evaluation.metrics import calculate_metrics
 from unsupervised_methods import utils
-from evaluation.post_process import calculate_hr_fft, calculate_hr_peakdetection
 from visualization import plot_bvp_with_confidence, plot_hr_distribution
 
 def unsupervised_predict(config, data_loader, method_name):
@@ -173,7 +172,7 @@ def unsupervised_predict(config, data_loader, method_name):
                 perturbed_hrs_peak_window = []
                 
                 eval_method = config.INFERENCE.EVALUATION_METHOD
-                hr_func = calculate_hr_fft if eval_method == "FFT" else (calculate_hr_peakdetection if eval_method == "peak detection" else None)
+                hr_func = _calculate_fft_hr if eval_method == "FFT" else (_calculate_peak_hr if eval_method == "peak detection" else None)
                 pert_hr_list_key = None
                 pert_hr_window_list = perturbed_hrs_fft_window if eval_method == "FFT" else (perturbed_hrs_peak_window if eval_method == "peak detection" else None)
 
