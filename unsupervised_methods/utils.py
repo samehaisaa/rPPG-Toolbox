@@ -31,5 +31,6 @@ def process_video(frames):
         summation = np.sum(np.sum(frame, axis=0), axis=0)
         RGB.append(summation / (frame.shape[0] * frame.shape[1]))
     RGB = np.asarray(RGB)
-    RGB = RGB.transpose(1, 0).reshape(1, 3, -1)
+    # Reshape to (frames, 3) for proper usage in CHROM_DEHAAN
+    RGB = RGB  # Keep shape as (frames, 3) - don't transpose or reshape
     return np.asarray(RGB)
