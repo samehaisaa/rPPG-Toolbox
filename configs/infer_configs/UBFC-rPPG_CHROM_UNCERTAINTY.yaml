@@ -8,17 +8,6 @@ UNSUPERVISED:
     N_PERTURBATIONS: 30  # Number of perturbations to run
     NOISE_STD_FRACTION: 0.02  # Standard deviation of noise as fraction of signal
   DATA:
-    FILTERING:
-      USE_EXCLUSION_LIST: True
-      EXCLUSION_LIST: [
-      'subject1', 'subject3', 'subject4', 'subject5', 'subject6', 'subject7', 'subject8', 'subject9', 'subject10',
-      'subject11', 'subject12', 'subject13', 'subject14', 'subject15', 'subject16', 'subject17', 'subject18', 'subject19',
-      'subject20', 'subject21', 'subject22', 'subject23', 'subject24', 'subject25', 'subject26', 'subject27', 'subject28',
-      'subject29', 'subject30', 'subject31', 'subject32', 'subject33', 'subject34', 'subject35', 'subject36', 'subject37',
-      'subject38', 'subject39', 'subject40', 'subject41', 'subject42', 'subject43', 'subject44', 'subject45', 'subject46',
-      'subject47', 'subject48', 'subject49', 'subject50']
-      SELECT_TASKS: False
-      TASK_LIST: ['']
     FS: 30
     DATASET: UBFC-rPPG
     DO_PREPROCESS: True  # If first time, should be true
