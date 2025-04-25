@@ -141,7 +141,7 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
             # Create dataset and dataloader for unsupervised method
             unsupervised_data = unsupervised_loader(
                 name="unsupervised",
-                config=experiment_config,
+                config_data=experiment_config,
                 training=False,
                 unsupervised=True
             )
