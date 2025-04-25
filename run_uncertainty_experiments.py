@@ -11,6 +11,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from shutil import copyfile
 from yacs.config import CfgNode as CN
+import numpy as np
+import torch
+from config import get_config
+from dataset import data_loader
+from neural_methods import trainer
+from unsupervised_methods.unsupervised_predictor import unsupervised_predict
+from torch.utils.data import DataLoader
 
 import dataset.data_loader as data_loader
 from config import get_config
@@ -110,7 +117,44 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
         
         # Create data loader
         print("Creating data loader...")
-        data_loaders = data_loader.unsupervised_data_loader(config=experiment_config)
+        # Create dictionary of data loaders, similar to how main.py does it
+        data_loaders = dict()
+        
+        # Select the right data loader based on dataset
+        if experiment_config.UNSUPERVISED.DATA.DATASET == 'UBFC-rPPG':
+            unsupervised_loader = data_loader.UBFCrPPGLoader.UBFCrPPGLoader
+        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'PURE':
+            unsupervised_loader = data_loader.PURELoader.PURELoader
+        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'SCAMPS':
+            unsupervised_loader = data_loader.SCAMPSLoader.SCAMPSLoader
+        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'MMPD':
+            unsupervised_loader = data_loader.MMPDLoader.MMPDLoader
+        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'BP4D+':
+            unsupervised_loader = data_loader.BP4DPlusLoader.BP4DPlusLoader
+        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'UBFC-PHYS':
+            unsupervised_loader = data_loader.UBFCPHYSLoader.UBFCPHYSLoader
+        else:
+            print(f"Unknown dataset: {experiment_config.UNSUPERVISED.DATA.DATASET}")
+            unsupervised_loader = None
+        
+        if unsupervised_loader is not None:
+            # Create dataset and dataloader for unsupervised method
+            unsupervised_data = unsupervised_loader(
+                name="unsupervised",
+                config=experiment_config,
+                training=False,
+                unsupervised=True
+            )
+            
+            data_loaders["unsupervised"] = DataLoader(
+                dataset=unsupervised_data,
+                batch_size=1,
+                shuffle=False,
+                num_workers=8,
+                pin_memory=True
+            )
+        else:
+            data_loaders["unsupervised"] = None
         
         # Run the experiment
         print(f"Running CHROM with {pert_type} perturbation...")
