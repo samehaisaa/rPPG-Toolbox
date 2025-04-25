@@ -143,7 +143,7 @@ def plot_perturbation_comparison(results_dict, item_id, window_idx=0, save_path=
     filtered_results = {}
     for pert_type, results in results_dict.items():
         for result in results:
-            if result['id'] == item_id and len(result['windows']) > window_idx:
+            if result['item_id'] == item_id and len(result['windows']) > window_idx:
                 filtered_results[pert_type] = result
                 break
     
@@ -159,22 +159,8 @@ def plot_perturbation_comparison(results_dict, item_id, window_idx=0, save_path=
     
     for i, (pert_type, result) in enumerate(filtered_results.items()):
         window = result['windows'][window_idx]
-        
-        # Find any key that might contain perturbed HR values
-        perturbed_hr_values = None
-        for k in window.keys():
-            if isinstance(window[k], list) and len(window[k]) > 0:
-                # Check if it's a list of numeric values (potential HR values)
-                if all(isinstance(x, (int, float, np.number)) or np.isnan(x) for x in window[k]):
-                    perturbed_hr_values = window[k]
-                    break
-        
-        # Skip if no perturbed HR values found
-        if not perturbed_hr_values:
-            print(f"Warning: No perturbed HR values found for {pert_type} in window {window_idx}")
-            continue
-            
-        hr_values = np.array([hr for hr in perturbed_hr_values if not np.isnan(hr)])
+        hr_method_key = [k for k in window.keys() if k.startswith('perturbed_hr_')][0]
+        hr_values = np.array([hr for hr in window[hr_method_key] if not np.isnan(hr)])
         
         if len(hr_values) == 0:
             continue
@@ -213,21 +199,12 @@ def plot_perturbation_comparison(results_dict, item_id, window_idx=0, save_path=
     
     for pert_type, result in filtered_results.items():
         window = result['windows'][window_idx]
-        
-        # Find any key that might contain perturbed HR values
-        perturbed_hr_values = None
-        for k in window.keys():
-            if isinstance(window[k], list) and len(window[k]) > 0:
-                # Check if it's a list of numeric values (potential HR values)
-                if all(isinstance(x, (int, float, np.number)) or np.isnan(x) for x in window[k]):
-                    perturbed_hr_values = window[k]
-                    break
-        
-        # Skip if no perturbed HR values found
-        if not perturbed_hr_values:
+        hr_keys = [k for k in window.keys() if k.startswith('perturbed_hr_')]
+        if not hr_keys:
+            print(f"Warning: No perturbed HR data found for {item_id}, window {window_idx}, perturbation {pert_type}. Skipping.")
             continue
-            
-        hr_values = np.array([hr for hr in perturbed_hr_values if not np.isnan(hr)])
+        hr_method_key = hr_keys[0]
+        hr_values = np.array([hr for hr in window[hr_method_key] if not np.isnan(hr)])
         
         if len(hr_values) == 0:
             continue
@@ -295,20 +272,11 @@ def plot_uncertainty_vs_error(results, window_idx=0, save_path=None):
         if 'hr_label' not in window or np.isnan(window['hr_label']):
             continue
             
-        # Find any key that might contain perturbed HR values
-        perturbed_hr_values = None
-        for k in window.keys():
-            if isinstance(window[k], list) and len(window[k]) > 0:
-                # Check if it's a list of numeric values (potential HR values)
-                if all(isinstance(x, (int, float, np.number)) or np.isnan(x) for x in window[k]):
-                    perturbed_hr_values = window[k]
-                    break
-        
-        # Skip if no perturbed HR values found
-        if not perturbed_hr_values:
+        hr_method_key = [k for k in window.keys() if k.startswith('perturbed_hr_')][0]
+        if hr_method_key not in window or not window[hr_method_key]:
             continue
             
-        hr_values = np.array([hr for hr in perturbed_hr_values if not np.isnan(hr)])
+        hr_values = np.array([hr for hr in window[hr_method_key] if not np.isnan(hr)])
         if len(hr_values) == 0:
             continue
             
