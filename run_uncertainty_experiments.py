@@ -163,6 +163,98 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
         results = unsupervised_predict(experiment_config, data_loaders, "CHROM")
         
         # Store results
+def run_experiment(config_file, perturbation_configs, output_dir="./model_outputs/uncertainty_experiments"):
+    """
+    Run experiments with different perturbation types and generate comparison visualizations.
+    
+    Args:
+        config_file: Path to base configuration file
+        perturbation_configs: Dictionary of perturbation types and their parameters
+        output_dir: Base directory to save results
+    """
+    # Load base configuration
+    args = argparse.Namespace(config_file=config_file)
+    config = get_config(args)
+    
+    # Set common output directory
+    config.defrost()
+    config.LOG.PATH = output_dir
+    
+    # Dictionary to store results for each perturbation type
+    all_results = {}
+    
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Save a copy of the base config
+    base_config_path = os.path.join(output_dir, "base_config.yaml")
+    copyfile(config_file, base_config_path)
+    
+    # Run each perturbation type
+    for pert_type, params in perturbation_configs.items():
+        print(f"\n{'='*50}")
+        print(f"Running experiment with perturbation type: {pert_type}")
+        print(f"Parameters: {params}")
+        print(f"{'='*50}\n")
+        
+        # Update config for this perturbation
+        experiment_config = update_config_perturbation(config.clone(), pert_type, params)
+        
+        # Create output directory for this perturbation type
+        pert_output_dir = os.path.join(output_dir, pert_type)
+        os.makedirs(pert_output_dir, exist_ok=True)
+        
+        # Save the configuration for this experiment
+        with open(os.path.join(pert_output_dir, "config.yaml"), 'w') as f:
+            # Convert CfgNode to dict for easier writing
+            yaml.dump(experiment_config.dump(), f, default_flow_style=False)
+        
+        # Create data loader
+        print("Creating data loader...")
+        # Create dictionary of data loaders, similar to how main.py does it
+        data_loaders = dict()
+        
+        # Select the right data loader based on dataset
+        if experiment_config.UNSUPERVISED.DATA.DATASET == 'UBFC-rPPG':
+            unsupervised_loader = data_loader.UBFCrPPGLoader.UBFCrPPGLoader
+        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'PURE':
+            unsupervised_loader = data_loader.PURELoader.PURELoader
+        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'SCAMPS':
+            unsupervised_loader = data_loader.SCAMPSLoader.SCAMPSLoader
+        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'MMPD':
+            unsupervised_loader = data_loader.MMPDLoader.MMPDLoader
+        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'BP4D+':
+            unsupervised_loader = data_loader.BP4DPlusLoader.BP4DPlusLoader
+        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'UBFC-PHYS':
+            unsupervised_loader = data_loader.UBFCPHYSLoader.UBFCPHYSLoader
+        else:
+            print(f"Unknown dataset: {experiment_config.UNSUPERVISED.DATA.DATASET}")
+            unsupervised_loader = None
+        
+        if unsupervised_loader is not None:
+            # Create dataset and dataloader for unsupervised method
+            unsupervised_data = unsupervised_loader(
+                name="unsupervised",
+                data_path=experiment_config.UNSUPERVISED.DATA.DATA_PATH,
+                config_data=experiment_config.UNSUPERVISED.DATA,
+                device=experiment_config.DEVICE
+            )
+            
+            data_loaders["unsupervised"] = DataLoader(
+                dataset=unsupervised_data,
+                batch_size=1,
+                shuffle=False,
+                num_workers=4,
+                worker_init_fn=seed_worker
+            )
+        else:
+            data_loaders["unsupervised"] = None
+        
+        # Run the experiment
+        print(f"Running CHROM with {pert_type} perturbation...")
+        results = unsupervised_predict(experiment_config, data_loaders, "CHROM")
+        
+        # Store results
         all_results[pert_type] = results
         
         # Generate individual visualizations
@@ -183,7 +275,16 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
             
             # Plot HR distributions for each window
             for j, window in enumerate(result['windows']):
-                hr_method_key = [k for k in window.keys() if k.startswith('perturbed_hr_')][0]
+                # Debug print to see what's in the window
+                print(f"DEBUG: Window keys for {item_id}, window {j}: {list(window.keys())}")
+                
+                # FIX: Add error handling for perturbed_hr keys
+                hr_keys = [k for k in window.keys() if k.startswith('perturbed_hr_')]
+                if not hr_keys:
+                    print(f"Warning: No perturbed HR data found for {item_id}, window {j}. Skipping visualization.")
+                    continue
+                
+                hr_method_key = hr_keys[0]
                 if hr_method_key in window and window[hr_method_key]:
                     plot_hr_distribution(
                         window[hr_method_key],
@@ -240,13 +341,17 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
         
         # Generate plot for different windows
         for window_idx in range(3):  # First few windows
-            plot_uncertainty_vs_error(
-                all_items,
-                window_idx=window_idx,
-                save_path=os.path.join(compare_dir, f"uncertainty_vs_error_window_{window_idx}.png")
-            )
+            # FIX: Add try-except to handle errors in individual windows
+            try:
+                plot_uncertainty_vs_error(
+                    all_items,
+                    window_idx=window_idx,
+                    save_path=os.path.join(compare_dir, f"uncertainty_vs_error_window_{window_idx}.png")
+                )
+            except Exception as e:
+                print(f"Error generating uncertainty vs error plot for window {window_idx}: {e}")
     except Exception as e:
-        print(f"Error generating uncertainty vs error plot: {e}")
+        print(f"Error in uncertainty vs error plotting: {e}")
     
     print("\nAll experiments completed!")
     return all_results
