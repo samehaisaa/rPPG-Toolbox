@@ -143,7 +143,7 @@ def plot_perturbation_comparison(results_dict, item_id, window_idx=0, save_path=
     filtered_results = {}
     for pert_type, results in results_dict.items():
         for result in results:
-            if result['item_id'] == item_id and len(result['windows']) > window_idx:
+            if result['id'] == item_id and len(result['windows']) > window_idx:
                 filtered_results[pert_type] = result
                 break
     
