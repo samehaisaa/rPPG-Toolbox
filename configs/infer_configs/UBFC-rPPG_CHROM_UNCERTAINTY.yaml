@@ -5,14 +5,47 @@ UNSUPERVISED:
   METRICS: ['MAE', 'RMSE', 'MAPE', 'Pearson', 'SNR', 'BA']
   # Perturbation parameters for CHROM uncertainty estimation
   CHROM_PERTURBATIONS:
-    N_PERTURBATIONS: 100  # Number of perturbations to run
-    NOISE_STD_FRACTION: 0.02  # Standard deviation of noise as fraction of signal
+    N_PERTURBATIONS: 30  # Number of perturbations to run
+    SAVE_PERTURBED_VIDEOS: True  # Whether to save perturbed video frames
+    SAVE_PATH: "perturbed_videos"  # Directory to save perturbed videos relative to output dir
+    
+    # Parameters for each perturbation type
+    PERTURBATION_TYPES: ["gaussian_noise", "blur", "brightness", "crop", "rotation", "color_jitter", "compression"]
+    PARAMS:
+      # Gaussian noise parameters
+      GAUSSIAN_NOISE:
+        NOISE_STD_FRACTION: 0.02  # Standard deviation of noise as fraction of signal
+      
+      # Blur parameters
+      BLUR:
+        KERNEL_SIZE: 3  # Size of Gaussian blur kernel (odd number)
+      
+      # Brightness parameters
+      BRIGHTNESS:
+        BRIGHTNESS_FACTOR: 0.1  # Factor by which to adjust brightness (+/-)
+      
+      # Random crop parameters
+      CROP:
+        CROP_FRACTION: 0.1  # Fraction of width/height to crop (0-1)
+      
+      # Rotation parameters
+      ROTATION:
+        ANGLE_RANGE: 5  # Maximum rotation angle in degrees (+/-)
+      
+      # Color jitter parameters
+      COLOR_JITTER:
+        FACTOR: 0.1  # Maximum color channel adjustment factor (0-1)
+      
+      # Compression parameters
+      COMPRESSION:
+        QUALITY: 80  # JPEG compression quality (0-100)
+  
   DATA:
     FS: 30
     DATASET: UBFC-rPPG
-    DO_PREPROCESS: True  # If first time, should be true
+    DO_PREPROCESS: False  # If first time, should be true
     DATA_FORMAT: NDHWC
-    DATA_PATH: "/kaggle/input/ubfc-rppg-s1-only"  # Raw dataset path, need to be updated
+    DATA_PATH: "data/UBFC-rPPG"  # Raw dataset path, need to be updated
     CACHED_PATH: "PreProcessed"  # Processed dataset save path, need to be updated
     EXP_DATA_NAME: ""
     BEGIN: 0.0
@@ -22,7 +55,7 @@ UNSUPERVISED:
       DATA_AUG: ['None']  # 'None' or 'Motion' is supported
       LABEL_TYPE: Raw
       DO_CHUNK: True
-      CHUNK_LENGTH: 180
+      CHUNK_LENGTH: 180  # Number of frames per chunk
       CROP_FACE:
         DO_CROP_FACE: True
         BACKEND: 'HC'  # HC for Haar Cascade, RF for RetinaFace, Y5F for YOLO5Face
@@ -38,7 +71,7 @@ UNSUPERVISED:
 INFERENCE:
   EVALUATION_METHOD: "FFT"  # "FFT" or "peak detection"
   EVALUATION_WINDOW:
-    USE_SMALLER_WINDOW: False  # Change this if you'd like an evaluation window smaller than the test video length
+    USE_SMALLER_WINDOW: True  # Change this if you'd like an evaluation window smaller than the test video length
     WINDOW_SIZE: 30  # In seconds
 LOG:
-  PATH: "./model_outputs/uncertainty_experiments"  # Output path for saved models and results
+  PATH: "./model_outputs/uncertainty_experiments"  # Output path for saved models and results 
