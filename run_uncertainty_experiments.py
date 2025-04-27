@@ -32,43 +32,33 @@ def seed_worker(worker_id):
     torch.manual_seed(worker_seed)
 
 def update_config_perturbation(config, perturbation_type, params=None):
-    """
-    Update the configuration with the specified perturbation type and parameters.
+    """Update config with perturbation parameters."""
+    config.defrost()
     
-    Args:
-        config: Configuration object
-        perturbation_type: Type of perturbation to use
-        params: Dictionary of perturbation parameters
-        
-    Returns:
-        Updated configuration
-    """
-    # Create CHROM_PERTURBATIONS if it doesn't exist
+    # Set perturbation type
     if not hasattr(config.UNSUPERVISED, 'CHROM_PERTURBATIONS'):
         config.UNSUPERVISED.CHROM_PERTURBATIONS = CN()
-
-    # Set perturbation type
+    
     config.UNSUPERVISED.CHROM_PERTURBATIONS.TYPE = perturbation_type
     
-    # Set number of perturbations
-    if not hasattr(config.UNSUPERVISED.CHROM_PERTURBATIONS, 'N_PERTURBATIONS'):
-        config.UNSUPERVISED.CHROM_PERTURBATIONS.N_PERTURBATIONS = 30
-        
-    # Set noise standard deviation fraction
-    if not hasattr(config.UNSUPERVISED.CHROM_PERTURBATIONS, 'NOISE_STD_FRACTION'):
-        config.UNSUPERVISED.CHROM_PERTURBATIONS.NOISE_STD_FRACTION = 0.01
+    # Get default parameters from config if available
+    if hasattr(config.UNSUPERVISED.CHROM_PERTURBATIONS, 'PARAMS') and \
+       hasattr(config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS, perturbation_type.upper()):
+        default_params = getattr(config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS, perturbation_type.upper())
+    else:
+        default_params = CN()
     
-    # Set perturbation parameters
+    # Update with provided parameters
     if params:
-        if not hasattr(config.UNSUPERVISED.CHROM_PERTURBATIONS, 'PARAMS'):
-            config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS = CN()
-            
         for key, value in params.items():
-            setattr(config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS, key.upper(), value)
+            setattr(default_params, key, value)
     
-    # Update output directory to include perturbation type
-    config.LOG.PATH = os.path.join(config.LOG.PATH, perturbation_type)
+    # Set parameters in config
+    if not hasattr(config.UNSUPERVISED.CHROM_PERTURBATIONS, 'PARAMS'):
+        config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS = CN()
+    setattr(config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS, perturbation_type.upper(), default_params)
     
+    config.freeze()
     return config
 
 def run_experiment(config_file, perturbation_configs, output_dir="./model_outputs/uncertainty_experiments"):
@@ -87,6 +77,7 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
     # Set common output directory
     config.defrost()
     config.LOG.PATH = output_dir
+    config.freeze()
     
     # Dictionary to store results for each perturbation type
     all_results = {}
@@ -112,178 +103,133 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
         pert_output_dir = os.path.join(output_dir, pert_type)
         os.makedirs(pert_output_dir, exist_ok=True)
         
+        # Create directory for perturbed videos
+        if experiment_config.UNSUPERVISED.CHROM_PERTURBATIONS.SAVE_PERTURBED_VIDEOS:
+            videos_dir = os.path.join(pert_output_dir, experiment_config.UNSUPERVISED.CHROM_PERTURBATIONS.SAVE_PATH)
+            os.makedirs(videos_dir, exist_ok=True)
+        else:
+            videos_dir = None
+        
         # Save the configuration for this experiment
         with open(os.path.join(pert_output_dir, "config.yaml"), 'w') as f:
-            # Convert CfgNode to dict for easier writing
             yaml.dump(experiment_config.dump(), f, default_flow_style=False)
         
         # Create data loader
         print("Creating data loader...")
-        # Create dictionary of data loaders, similar to how main.py does it
-        data_loaders = dict()
+        data_loaders = create_data_loader(experiment_config)
         
-        # Select the right data loader based on dataset
-        if experiment_config.UNSUPERVISED.DATA.DATASET == 'UBFC-rPPG':
-            unsupervised_loader = data_loader.UBFCrPPGLoader.UBFCrPPGLoader
-        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'PURE':
-            unsupervised_loader = data_loader.PURELoader.PURELoader
-        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'SCAMPS':
-            unsupervised_loader = data_loader.SCAMPSLoader.SCAMPSLoader
-        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'MMPD':
-            unsupervised_loader = data_loader.MMPDLoader.MMPDLoader
-        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'BP4D+':
-            unsupervised_loader = data_loader.BP4DPlusLoader.BP4DPlusLoader
-        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'UBFC-PHYS':
-            unsupervised_loader = data_loader.UBFCPHYSLoader.UBFCPHYSLoader
-        else:
-            print(f"Unknown dataset: {experiment_config.UNSUPERVISED.DATA.DATASET}")
-            unsupervised_loader = None
-        
-        if unsupervised_loader is not None:
-            # Create dataset and dataloader for unsupervised method
-            unsupervised_data = unsupervised_loader(
-                name="unsupervised",
-                data_path=experiment_config.UNSUPERVISED.DATA.DATA_PATH,
-                config_data=experiment_config.UNSUPERVISED.DATA,
-                device=experiment_config.DEVICE
-            )
-            
-            data_loaders["unsupervised"] = DataLoader(
-                dataset=unsupervised_data,
-                batch_size=1,
-                shuffle=False,
-                num_workers=4,
-                worker_init_fn=seed_worker
-            )
-        else:
-            data_loaders["unsupervised"] = None
+        if data_loaders["unsupervised"] is None:
+            print(f"Error: Could not create data loader for {pert_type}. Skipping.")
+            continue
         
         # Run the experiment
         print(f"Running CHROM with {pert_type} perturbation...")
-        results = unsupervised_predict(experiment_config, data_loaders, "CHROM")
         
-        # Store results
-def run_experiment(config_file, perturbation_configs, output_dir="./model_outputs/uncertainty_experiments"):
-    """
-    Run experiments with different perturbation types and generate comparison visualizations.
-    
-    Args:
-        config_file: Path to base configuration file
-        perturbation_configs: Dictionary of perturbation types and their parameters
-        output_dir: Base directory to save results
-    """
-    # Load base configuration
-    args = argparse.Namespace(config_file=config_file)
-    config = get_config(args)
-    
-    # Set common output directory
-    config.defrost()
-    config.LOG.PATH = output_dir
-    
-    # Dictionary to store results for each perturbation type
-    all_results = {}
-    
-    # Create output directory
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Save a copy of the base config
-    base_config_path = os.path.join(output_dir, "base_config.yaml")
-    copyfile(config_file, base_config_path)
-    
-    # Run each perturbation type
-    for pert_type, params in perturbation_configs.items():
-        print(f"\n{'='*50}")
-        print(f"Running experiment with perturbation type: {pert_type}")
-        print(f"Parameters: {params}")
-        print(f"{'='*50}\n")
+        # Get perturbation parameters
+        pert_params = {}
+        if hasattr(experiment_config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS, pert_type.upper()):
+            pert_params = getattr(experiment_config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS, pert_type.upper())
         
-        # Update config for this perturbation
-        experiment_config = update_config_perturbation(config.clone(), pert_type, params)
-        
-        # Create output directory for this perturbation type
-        pert_output_dir = os.path.join(output_dir, pert_type)
-        os.makedirs(pert_output_dir, exist_ok=True)
-        
-        # Save the configuration for this experiment
-        with open(os.path.join(pert_output_dir, "config.yaml"), 'w') as f:
-            # Convert CfgNode to dict for easier writing
-            yaml.dump(experiment_config.dump(), f, default_flow_style=False)
-        
-        # Create data loader
-        print("Creating data loader...")
-        # Create dictionary of data loaders, similar to how main.py does it
-        data_loaders = dict()
-        
-        # Select the right data loader based on dataset
-        if experiment_config.UNSUPERVISED.DATA.DATASET == 'UBFC-rPPG':
-            unsupervised_loader = data_loader.UBFCrPPGLoader.UBFCrPPGLoader
-        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'PURE':
-            unsupervised_loader = data_loader.PURELoader.PURELoader
-        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'SCAMPS':
-            unsupervised_loader = data_loader.SCAMPSLoader.SCAMPSLoader
-        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'MMPD':
-            unsupervised_loader = data_loader.MMPDLoader.MMPDLoader
-        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'BP4D+':
-            unsupervised_loader = data_loader.BP4DPlusLoader.BP4DPlusLoader
-        elif experiment_config.UNSUPERVISED.DATA.DATASET == 'UBFC-PHYS':
-            unsupervised_loader = data_loader.UBFCPHYSLoader.UBFCPHYSLoader
-        else:
-            print(f"Unknown dataset: {experiment_config.UNSUPERVISED.DATA.DATASET}")
-            unsupervised_loader = None
-        
-        if unsupervised_loader is not None:
-            # Create dataset and dataloader for unsupervised method
-            unsupervised_data = unsupervised_loader(
-                name="unsupervised",
-                data_path=experiment_config.UNSUPERVISED.DATA.DATA_PATH,
-                config_data=experiment_config.UNSUPERVISED.DATA,
-                device=experiment_config.DEVICE
-            )
+        # Process each batch
+        all_batch_results = []
+        for batch_idx, (frames, labels) in enumerate(data_loaders["unsupervised"]):
+            frames = frames.cpu().numpy()
+            labels = labels.cpu().numpy()
             
-            data_loaders["unsupervised"] = DataLoader(
-                dataset=unsupervised_data,
-                batch_size=1,
-                shuffle=False,
-                num_workers=4,
-                worker_init_fn=seed_worker
-            )
-        else:
-            data_loaders["unsupervised"] = None
-        
-        # Run the experiment
-        print(f"Running CHROM with {pert_type} perturbation...")
-        results = unsupervised_predict(experiment_config, data_loaders, "CHROM")
-        
-        # Store results
-        all_results[pert_type] = results
-        
-        # Generate individual visualizations
-        print(f"Generating visualizations for {pert_type}...")
-        for i, result in enumerate(results):
-            item_id = result['id']
+            # Create video save directory for this batch
+            if videos_dir:
+                batch_video_dir = os.path.join(videos_dir, f'batch_{batch_idx}')
+            else:
+                batch_video_dir = None
             
-            # Plot BVP with confidence bands
-            if result.get('mean_bvp') is not None and result.get('confidence_bands') is not None:
-                plot_bvp_with_confidence(
-                    result['mean_bvp'],
-                    result['confidence_bands'],
+            # Process each item in batch
+            for idx in range(frames.shape[0]):
+                result = CHROME_DEHAAN(
+                    frames[idx],
                     experiment_config.UNSUPERVISED.DATA.FS,
-                    gt_bvp_signal=result['gt_bvp'],
-                    title=f"CHROM BVP with {pert_type} Perturbation - {item_id}",
-                    save_path=os.path.join(pert_output_dir, f"{item_id}_bvp_confidence.png")
+                    n_perturbations=experiment_config.UNSUPERVISED.CHROM_PERTURBATIONS.N_PERTURBATIONS,
+                    perturbation_type=pert_type,
+                    perturbation_params=pert_params,
+                    save_path=os.path.join(batch_video_dir, f'item_{idx}') if batch_video_dir else None
                 )
-            
-            # Plot HR distributions for each window
-            for j, window in enumerate(result['windows']):
-                # Debug print to see what's in the window
-                print(f"DEBUG: Window keys for {item_id}, window {j}: {list(window.keys())}")
                 
-                # FIX: Add error handling for perturbed_hr keys
-                hr_keys = [k for k in window.keys() if k.startswith('perturbed_hr_')]
-                if not hr_keys:
-                    print(f"Warning: No perturbed HR data found for {item_id}, window {j}. Skipping visualization.")
-                    continue
-                
+                # Add metadata to result
+                result['id'] = f'batch_{batch_idx}_item_{idx}'
+                result['gt_bvp'] = labels[idx]
+                all_batch_results.append(result)
+        
+        # Store results
+        all_results[pert_type] = all_batch_results
+        
+        # Generate visualizations
+        generate_visualizations(all_batch_results, pert_type, pert_output_dir, experiment_config)
+    
+    # Generate comparative visualizations
+    generate_comparative_visualizations(all_results, output_dir)
+    
+    print("\nAll experiments completed!")
+    return all_results
+
+def create_data_loader(config):
+    """Create data loader based on configuration."""
+    data_loaders = dict()
+    
+    # Select the right data loader based on dataset
+    if config.UNSUPERVISED.DATA.DATASET == 'UBFC-rPPG':
+        unsupervised_loader = data_loader.UBFCrPPGLoader.UBFCrPPGLoader
+    elif config.UNSUPERVISED.DATA.DATASET == 'PURE':
+        unsupervised_loader = data_loader.PURELoader.PURELoader
+    elif config.UNSUPERVISED.DATA.DATASET == 'SCAMPS':
+        unsupervised_loader = data_loader.SCAMPSLoader.SCAMPSLoader
+    elif config.UNSUPERVISED.DATA.DATASET == 'MMPD':
+        unsupervised_loader = data_loader.MMPDLoader.MMPDLoader
+    elif config.UNSUPERVISED.DATA.DATASET == 'BP4D+':
+        unsupervised_loader = data_loader.BP4DPlusLoader.BP4DPlusLoader
+    elif config.UNSUPERVISED.DATA.DATASET == 'UBFC-PHYS':
+        unsupervised_loader = data_loader.UBFCPHYSLoader.UBFCPHYSLoader
+    else:
+        print(f"Unknown dataset: {config.UNSUPERVISED.DATA.DATASET}")
+        return {"unsupervised": None}
+    
+    # Create dataset and dataloader
+    unsupervised_data = unsupervised_loader(
+        name="unsupervised",
+        data_path=config.UNSUPERVISED.DATA.DATA_PATH,
+        config_data=config.UNSUPERVISED.DATA,
+        device=config.DEVICE
+    )
+    
+    data_loaders["unsupervised"] = DataLoader(
+        dataset=unsupervised_data,
+        batch_size=1,
+        shuffle=False,
+        num_workers=4,
+        worker_init_fn=seed_worker
+    )
+    
+    return data_loaders
+
+def generate_visualizations(results, pert_type, output_dir, config):
+    """Generate visualizations for a single perturbation type."""
+    print(f"Generating visualizations for {pert_type}...")
+    for result in results:
+        item_id = result['id']
+        
+        # Plot BVP with confidence bands
+        if result.get('mean_bvp') is not None and result.get('confidence_bands') is not None:
+            plot_bvp_with_confidence(
+                result['mean_bvp'],
+                result['confidence_bands'],
+                config.UNSUPERVISED.DATA.FS,
+                gt_bvp_signal=result['gt_bvp'],
+                title=f"CHROM BVP with {pert_type} Perturbation - {item_id}",
+                save_path=os.path.join(output_dir, f"{item_id}_bvp_confidence.png")
+            )
+        
+        # Plot HR distributions for each window
+        for j, window in enumerate(result.get('windows', [])):
+            hr_keys = [k for k in window.keys() if k.startswith('perturbed_hr_')]
+            if hr_keys:
                 hr_method_key = hr_keys[0]
                 if hr_method_key in window and window[hr_method_key]:
                     plot_hr_distribution(
@@ -291,36 +237,33 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
                         mean_hr=window.get('hr_pred'),
                         gt_hr=window.get('hr_label'),
                         title=f"HR Distribution with {pert_type} Perturbation - {item_id}, Window {j}",
-                        save_path=os.path.join(pert_output_dir, f"{item_id}_window_{j}_hr_dist.png")
+                        save_path=os.path.join(output_dir, f"{item_id}_window_{j}_hr_dist.png")
                     )
-    
-    # Generate comparative visualizations
+
+def generate_comparative_visualizations(all_results, output_dir):
+    """Generate comparative visualizations across perturbation types."""
     print("\nGenerating comparative visualizations...")
     
     # Create directory for comparative visualizations
     compare_dir = os.path.join(output_dir, "comparison")
     os.makedirs(compare_dir, exist_ok=True)
     
-    # Find all unique item IDs across all results
-    all_item_ids = set()
-    for results in all_results.values():
-        for result in results:
-            all_item_ids.add(result['id'])
+    # Find all unique item IDs
+    all_item_ids = {result['id'] for results in all_results.values() for result in results}
     
     # Generate comparison plots for each item
     for item_id in all_item_ids:
-        # Determine max number of windows for this item across all perturbation types
-        max_windows = 0
-        for results in all_results.values():
-            for result in results:
-                if result['id'] == item_id:
-                    max_windows = max(max_windows, len(result['windows']))
-                    break
+        # Get maximum number of windows
+        max_windows = max(
+            len(result.get('windows', []))
+            for results in all_results.values()
+            for result in results
+            if result['id'] == item_id
+        )
         
-        # Generate comparison plots for each window
+        # Generate plots for each window
         for window_idx in range(max_windows):
             try:
-                # Plot perturbation comparison
                 plot_perturbation_comparison(
                     all_results,
                     item_id,
@@ -330,18 +273,15 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
             except Exception as e:
                 print(f"Error generating comparison plot for {item_id}, window {window_idx}: {e}")
     
-    # Generate uncertainty vs error plot across all results
+    # Generate uncertainty vs error plots
     try:
-        # Flatten results list
         all_items = []
         for pert_type, results in all_results.items():
             for result in results:
-                result['perturbation_type'] = pert_type  # Ensure perturbation type is included
+                result['perturbation_type'] = pert_type
                 all_items.append(result)
         
-        # Generate plot for different windows
         for window_idx in range(3):  # First few windows
-            # FIX: Add try-except to handle errors in individual windows
             try:
                 plot_uncertainty_vs_error(
                     all_items,
@@ -352,9 +292,6 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
                 print(f"Error generating uncertainty vs error plot for window {window_idx}: {e}")
     except Exception as e:
         print(f"Error in uncertainty vs error plotting: {e}")
-    
-    print("\nAll experiments completed!")
-    return all_results
 
 if __name__ == "__main__":
     # Parse command line arguments
@@ -367,13 +304,13 @@ if __name__ == "__main__":
     
     # Define perturbation configurations
     perturbation_configs = {
-        "gaussian_noise": {"noise_std_fraction": 0.02},
-        "blur": {"kernel_size": 3},
-        "brightness": {"brightness_factor": 0.1},
-        "crop": {"crop_fraction": 0.1},
-        "rotation": {"angle_range": 5},
-        "color_jitter": {"factor": 0.1},
-        "compression": {"quality": 80}
+        "gaussian_noise": {"NOISE_STD_FRACTION": 0.02},
+        "blur": {"KERNEL_SIZE": 3},
+        "brightness": {"BRIGHTNESS_FACTOR": 0.1},
+        "crop": {"CROP_FRACTION": 0.1},
+        "rotation": {"ANGLE_RANGE": 5},
+        "color_jitter": {"FACTOR": 0.1},
+        "compression": {"QUALITY": 80}
     }
     
     # Run experiments
