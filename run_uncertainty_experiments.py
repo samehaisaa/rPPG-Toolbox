@@ -129,7 +129,10 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
         # Get perturbation parameters
         pert_params = {}
         if hasattr(experiment_config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS, pert_type.upper()):
-            pert_params = getattr(experiment_config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS, pert_type.upper())
+            # Convert parameter keys to lowercase for compatibility with perturbation functions
+            uppercase_params = getattr(experiment_config.UNSUPERVISED.CHROM_PERTURBATIONS.PARAMS, pert_type.upper())
+            for key in uppercase_params:
+                pert_params[key.lower()] = getattr(uppercase_params, key)
         
         # Process each batch
         all_batch_results = []
