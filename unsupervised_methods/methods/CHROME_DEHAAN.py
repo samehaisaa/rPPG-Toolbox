@@ -6,6 +6,8 @@ import math
 from scipy import signal
 import unsupervised_methods.utils as utils
 from unsupervised_methods.perturbation import get_perturbation_function, add_gaussian_noise
+import os
+import cv2
 
 def _calculate_bvp_from_rgb(RGB, FS, LPF, HPF, WinSec):
     """Core CHROM BVP calculation logic for a given RGB signal."""
@@ -131,7 +133,7 @@ def process_video(frames):
     """Process video frames to get RGB signals."""
     return utils.process_video(frames)
 
-def CHROME_DEHAAN(frames, FS, n_perturbations=10, noise_std_fraction=0.01, perturbation_type='gaussian_noise', perturbation_params=None):
+def CHROME_DEHAAN(frames, FS, n_perturbations=10, noise_std_fraction=0.01, perturbation_type='gaussian_noise', perturbation_params=None, save_path=None):
     """
     Enhanced CHROM method with uncertainty quantification via input perturbation.
     
@@ -142,9 +144,10 @@ def CHROME_DEHAAN(frames, FS, n_perturbations=10, noise_std_fraction=0.01, pertu
         noise_std_fraction: Standard deviation of noise as fraction of signal (used for gaussian_noise)
         perturbation_type: Type of perturbation to apply ('gaussian_noise', 'blur', 'brightness', etc.)
         perturbation_params: Dictionary of parameters for the perturbation function
+        save_path: Path to save perturbed video frames. If None, frames are not saved.
         
     Returns:
-        Dictionary containing BVP signal, confidence bands, and all perturbed signals
+        Dictionary containing BVP signal, confidence bands, perturbed signals, and frames
     """
     LPF = 0.7
     HPF = 2.5
@@ -170,15 +173,18 @@ def CHROME_DEHAAN(frames, FS, n_perturbations=10, noise_std_fraction=0.01, pertu
     RGB_original = process_video(original_frames)
     if RGB_original.size == 0:
         print("Error: process_video returned empty RGB array.")
-        return {'BVP': np.array([]), 'confidence_bands': np.array([[], []]), 'perturbed_signals': np.array([])}
+        return {'BVP': np.array([]), 'confidence_bands': np.array([[], []]), 
+                'perturbed_signals': np.array([]), 'perturbed_frames': []}
     
     # Calculate original BVP
     original_bvp = _calculate_bvp_from_rgb(RGB_original, FS, LPF, HPF, WinSec)
     if original_bvp.size == 0:
         print("Warning: Original BVP calculation resulted in empty array.")
-        return {'BVP': np.array([]), 'confidence_bands': np.array([[], []]), 'perturbed_signals': np.array([])}
+        return {'BVP': np.array([]), 'confidence_bands': np.array([[], []]), 
+                'perturbed_signals': np.array([]), 'perturbed_frames': []}
     
     perturbed_bvp_signals = [original_bvp]  # Start with original BVP
+    perturbed_frames_list = [original_frames]  # Store original frames
     
     # Generate and process perturbed signals
     for i in range(n_perturbations):
@@ -207,10 +213,12 @@ def CHROME_DEHAAN(frames, FS, n_perturbations=10, noise_std_fraction=0.01, pertu
             bvp_perturbed = new_bvp
             
         perturbed_bvp_signals.append(bvp_perturbed)
+        perturbed_frames_list.append(perturbed_frames)
         
     if not perturbed_bvp_signals:
          print("Error: No BVP signals generated.")
-         return {'BVP': np.array([]), 'confidence_bands': np.array([[], []]), 'perturbed_signals': np.array([])}
+         return {'BVP': np.array([]), 'confidence_bands': np.array([[], []]), 
+                 'perturbed_signals': np.array([]), 'perturbed_frames': []}
          
     # Calculate mean BVP and confidence bands
     perturbed_bvp_signals = np.array(perturbed_bvp_signals)
@@ -218,11 +226,41 @@ def CHROME_DEHAAN(frames, FS, n_perturbations=10, noise_std_fraction=0.01, pertu
     ci_lower = np.percentile(perturbed_bvp_signals, 2.5, axis=0)
     ci_upper = np.percentile(perturbed_bvp_signals, 97.5, axis=0)
     confidence_bands = np.array([ci_lower, ci_upper])
+    
+    # Save perturbed frames if path provided
+    if save_path:
+        try:
+            os.makedirs(save_path, exist_ok=True)
+            for i, frames in enumerate(perturbed_frames_list):
+                # Convert frames to uint8 if not already
+                if frames.dtype != np.uint8:
+                    frames = (frames * 255).astype(np.uint8)
+                
+                # Save as video using cv2.VideoWriter
+                name = 'original' if i == 0 else f'perturbed_{i}'
+                video_path = os.path.join(save_path, f'{name}.avi')
+                
+                # Get frame dimensions
+                T, H, W, C = frames.shape
+                fourcc = cv2.VideoWriter_fourcc(*'XVID')
+                out = cv2.VideoWriter(video_path, fourcc, FS, (W, H))
+                
+                for frame in frames:
+                    # Convert to BGR for OpenCV
+                    if C == 3:
+                        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                    out.write(frame)
+                out.release()
+                
+            print(f"Saved {len(perturbed_frames_list)} videos to {save_path}")
+        except Exception as e:
+            print(f"Error saving perturbed videos: {e}")
 
     return {
         'BVP': mean_bvp,  # Mean BVP signal from perturbations
         'confidence_bands': confidence_bands,  # Lower and upper confidence bounds
         'perturbed_signals': perturbed_bvp_signals, # Return all generated signals
+        'perturbed_frames': perturbed_frames_list if save_path is None else None, # Return frames only if not saved
         'perturbation_type': perturbation_type  # Include the type of perturbation used
     }
     
