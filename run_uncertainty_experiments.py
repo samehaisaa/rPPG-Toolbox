@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader
 from config import get_config
 from dataset import data_loader
 from neural_methods import trainer
+from unsupervised_methods.methods.CHROME_DEHAAN import CHROME_DEHAAN
 from unsupervised_methods.unsupervised_predictor import unsupervised_predict
 
 from visualization import (
@@ -132,7 +133,7 @@ def run_experiment(config_file, perturbation_configs, output_dir="./model_output
         
         # Process each batch
         all_batch_results = []
-        for batch_idx, (frames, labels) in enumerate(data_loaders["unsupervised"]):
+        for batch_idx, (frames, labels, filenames, chunk_ids) in enumerate(data_loaders["unsupervised"]):
             frames = frames.cpu().numpy()
             labels = labels.cpu().numpy()
             
