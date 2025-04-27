@@ -123,7 +123,7 @@ def plot_hr_distribution(hr_values, mean_hr=None, gt_hr=None, title="Heart Rate 
     
     if len(hr_values) == 0:
         print(f"Warning: All HR values are NaN for {title}. Skipping plot.")
-        return
+        return  
         
     plt.figure(figsize=(10, 6))
     
