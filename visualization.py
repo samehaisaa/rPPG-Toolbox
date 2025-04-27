@@ -127,20 +127,18 @@ def plot_hr_distribution(hr_values, mean_hr=None, gt_hr=None, title="Heart Rate 
         
     plt.figure(figsize=(10, 6))
     
-    # Plot distribution
-    sns.histplot(hr_values, kde=True, color='blue', bins=15)
+    # Calculate bin edges with step size of 1 BPM
+    min_hr = np.floor(np.min(hr_values))
+    max_hr = np.ceil(np.max(hr_values))
+    bins = np.arange(min_hr, max_hr + 2) - 0.5  # +2 to include max value, -0.5 to center bins
+    
+    # Plot histogram with fixed bin size of 1 BPM
+    plt.hist(hr_values, bins=bins, color='blue', alpha=0.7, label='HR Distribution')
     
     # Add mean line from perturbed values
     dist_mean = np.mean(hr_values)
-    plt.axvline(dist_mean, color='blue', linestyle='-', label=f'Distribution Mean: {dist_mean:.2f} BPM')
-    
-    # Add confidence interval (95%)
-    ci_lower = np.percentile(hr_values, 2.5)
-    ci_upper = np.percentile(hr_values, 97.5)
-    plt.axvline(ci_lower, color='blue', linestyle='--', alpha=0.7,
-                label=f'95% CI: [{ci_lower:.2f}, {ci_upper:.2f}] BPM')
-    plt.axvline(ci_upper, color='blue', linestyle='--', alpha=0.7)
-    plt.axvspan(ci_lower, ci_upper, alpha=0.2, color='blue')
+    plt.axvline(dist_mean, color='blue', linestyle='-', 
+                label=f'Distribution Mean: {dist_mean:.2f} BPM')
     
     # Add mean HR if provided
     if mean_hr is not None and not np.isnan(mean_hr):
@@ -160,16 +158,15 @@ def plot_hr_distribution(hr_values, mean_hr=None, gt_hr=None, title="Heart Rate 
                     bbox=dict(facecolor='white', alpha=0.8))
     
     plt.xlabel("Heart Rate (BPM)")
-    plt.ylabel("Frequency")
+    plt.ylabel("Count")
     plt.title(title)
     plt.legend()
     plt.grid(True, alpha=0.3)
     
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        plt.savefig(save_path)
-        # print(f"HR distribution plot saved to: {save_path}") # Reduce print frequency
-        plt.close() # Close the plot after saving
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
     else:
         plt.show()
 
