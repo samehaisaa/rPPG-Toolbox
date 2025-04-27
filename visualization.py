@@ -23,39 +23,58 @@ def plot_bvp_with_confidence(bvp_signal, confidence_bands, fs, gt_bvp_signal=Non
     time_vector = np.arange(len(bvp_signal)) / fs
     
     plt.figure(figsize=(12, 4))
-    plt.plot(time_vector, bvp_signal, label='Mean Predicted BVP', color='blue')
+    
+    # Normalize signals for better comparison
+    bvp_normalized = (bvp_signal - np.mean(bvp_signal)) / np.std(bvp_signal)
+    confidence_bands_normalized = np.zeros_like(confidence_bands)
+    confidence_bands_normalized[0] = (confidence_bands[0] - np.mean(bvp_signal)) / np.std(bvp_signal)
+    confidence_bands_normalized[1] = (confidence_bands[1] - np.mean(bvp_signal)) / np.std(bvp_signal)
+    
+    # Plot normalized predicted BVP and confidence bands
+    plt.plot(time_vector, bvp_normalized, label='Mean Predicted BVP', color='blue', linewidth=1.5)
     plt.fill_between(time_vector, 
-                     confidence_bands[0], 
-                     confidence_bands[1], 
+                     confidence_bands_normalized[0], 
+                     confidence_bands_normalized[1], 
                      color='lightblue', 
-                     alpha=0.5, 
-                     label='95% Confidence Interval (Perturbation)')
+                     alpha=0.3, 
+                     label='95% Confidence Interval')
                      
     # Plot Ground Truth BVP if provided and valid
+    error_metrics = {}
     if gt_bvp_signal is not None:
         if len(gt_bvp_signal) == len(bvp_signal):
-             # Normalize GT signal for visualization purposes if needed (optional)
-             # gt_bvp_normalized = (gt_bvp_signal - np.mean(gt_bvp_signal)) / np.std(gt_bvp_signal)
-             # bvp_normalized = (bvp_signal - np.mean(bvp_signal)) / np.std(bvp_signal)
-             # plt.plot(time_vector, bvp_normalized, label='Mean Predicted BVP (Norm)', color='blue')
-             # plt.plot(time_vector, gt_bvp_normalized, label='Ground Truth BVP (Norm)', color='green', linestyle=':')
-             plt.plot(time_vector, gt_bvp_signal, label='Ground Truth BVP', color='green', linestyle=':')
+            # Normalize ground truth
+            gt_bvp_normalized = (gt_bvp_signal - np.mean(gt_bvp_signal)) / np.std(gt_bvp_signal)
+            plt.plot(time_vector, gt_bvp_normalized, label='Ground Truth BVP', 
+                    color='green', linestyle='-', linewidth=2, alpha=0.7)
+            
+            # Calculate error metrics
+            error_metrics['MAE'] = np.mean(np.abs(bvp_normalized - gt_bvp_normalized))
+            error_metrics['RMSE'] = np.sqrt(np.mean((bvp_normalized - gt_bvp_normalized)**2))
+            error_metrics['Pearson'] = np.corrcoef(bvp_normalized, gt_bvp_normalized)[0,1]
+            
+            # Add error metrics to plot
+            metrics_text = f'MAE: {error_metrics["MAE"]:.3f}\nRMSE: {error_metrics["RMSE"]:.3f}\nPearson: {error_metrics["Pearson"]:.3f}'
+            plt.text(0.02, 0.98, metrics_text, transform=plt.gca().transAxes, 
+                    verticalalignment='top', fontsize=9,
+                    bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
         else:
-             print(f"Warning: GT BVP signal length ({len(gt_bvp_signal)}) does not match predicted BVP length ({len(bvp_signal)}) for plot '{title}'. Skipping GT plot.")
+            print(f"Warning: GT BVP signal length ({len(gt_bvp_signal)}) does not match predicted BVP length ({len(bvp_signal)}) for plot '{title}'. Skipping GT plot.")
     
     plt.xlabel("Time (s)")
-    plt.ylabel("BVP Amplitude")
+    plt.ylabel("Normalized BVP Amplitude")
     plt.title(title)
-    plt.legend()
-    plt.grid(True)
+    plt.legend(loc='upper right')
+    plt.grid(True, alpha=0.3)
     
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        plt.savefig(save_path)
-        # print(f"BVP confidence plot saved to: {save_path}") # Reduce print frequency
-        plt.close() # Close the plot after saving
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
     else:
         plt.show()
+        
+    return error_metrics if error_metrics else None
 
 def plot_hr_distribution(hr_values, mean_hr=None, gt_hr=None, title="Heart Rate Distribution", save_path=None):
     """
@@ -199,11 +218,7 @@ def plot_perturbation_comparison(results_dict, item_id, window_idx=0, save_path=
     
     for pert_type, result in filtered_results.items():
         window = result['windows'][window_idx]
-        hr_keys = [k for k in window.keys() if k.startswith('perturbed_hr_')]
-        if not hr_keys:
-            print(f"Warning: No perturbed HR data found for {item_id}, window {window_idx}, perturbation {pert_type}. Skipping.")
-            continue
-        hr_method_key = hr_keys[0]
+        hr_method_key = [k for k in window.keys() if k.startswith('perturbed_hr_')][0]
         hr_values = np.array([hr for hr in window[hr_method_key] if not np.isnan(hr)])
         
         if len(hr_values) == 0:
