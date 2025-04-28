@@ -130,6 +130,206 @@ def _save_video(frames, output_path):
     out.release()
 
 
+def validate_uncertainty(timestamps, ppg_signal, uncertainties, gt_signal=None):
+    """
+    Validate the uncertainty predictions using various metrics.
+    
+    Args:
+        timestamps: Time points
+        ppg_signal: Extracted PPG signal
+        uncertainties: Predicted uncertainties
+        gt_signal: Ground truth signal (if available)
+    """
+    print("\n===Validating Uncertainty Predictions===")
+    
+    # Create output directory
+    output_dir = 'model_outputs/uncertainty_results'
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 1. Basic statistics
+    print("\n1. Uncertainty Statistics:")
+    print(f"Mean uncertainty: {np.mean(uncertainties):.4f}")
+    print(f"Std uncertainty: {np.std(uncertainties):.4f}")
+    print(f"Max uncertainty: {np.max(uncertainties):.4f}")
+    print(f"Min uncertainty: {np.min(uncertainties):.4f}")
+    
+    # 2. Signal quality metrics
+    print("\n2. Signal Quality Metrics:")
+    try:
+        from evaluation.post_process import _calculate_SNR, _calculate_fft_hr, _calculate_peak_hr, _compute_macc, power2db
+        from scipy.signal import welch
+        
+        hr_fft = _calculate_fft_hr(ppg_signal, fs=30)
+        hr_peak = _calculate_peak_hr(ppg_signal, fs=30)
+        snr = _calculate_SNR(ppg_signal, hr_fft, fs=30)
+        
+        # Calculate Power Spectral Density
+        f, pxx = welch(ppg_signal, fs=30, nperseg=min(len(ppg_signal), 256))
+        
+        # Calculate signal power in different bands
+        # Heart rate band: 0.75-2.5 Hz (45-150 bpm)
+        hr_band_mask = (f >= 0.75) & (f <= 2.5)
+        hr_band_power = np.sum(pxx[hr_band_mask])
+        
+        # Total power in the signal
+        total_power = np.sum(pxx)
+        
+        # Ratio of HR band power to total power
+        hr_power_ratio = hr_band_power / (total_power + 1e-10)
+        
+        print(f"Signal SNR: {snr:.2f} dB")
+        print(f"HR (FFT): {hr_fft:.2f} bpm")
+        print(f"HR (Peak): {hr_peak:.2f} bpm")
+        print(f"HR band power ratio: {hr_power_ratio:.4f}")
+        
+        # Save power spectrum plot
+        plt.figure(figsize=(10, 5))
+        plt.semilogy(f, pxx)
+        plt.axvspan(0.75, 2.5, alpha=0.3, color='green', label='HR band (45-150 bpm)')
+        plt.grid(True)
+        plt.xlabel('Frequency [Hz]')
+        plt.ylabel('PSD [V**2/Hz]')
+        plt.title('Power Spectral Density')
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'power_spectrum.png'))
+        plt.close()
+        
+    except Exception as e:
+        print(f"Error calculating signal quality metrics: {str(e)}")
+    
+    # 3. Uncertainty calibration (if ground truth is available)
+    if gt_signal is not None:
+        print("\n3. Uncertainty Calibration:")
+        # Normalize signals for error calculation
+        ppg_norm = (ppg_signal - np.mean(ppg_signal)) / np.std(ppg_signal)
+        gt_norm = (gt_signal - np.mean(gt_signal)) / np.std(gt_signal)
+        
+        # Calculate actual errors
+        errors = np.abs(ppg_norm - gt_norm)
+        
+        # Calculate calibration metrics
+        from sklearn.metrics import mean_squared_error, mean_absolute_error
+        calibration_error = mean_squared_error(errors, uncertainties)
+        mae = mean_absolute_error(errors, uncertainties)
+        print(f"Calibration Error (MSE): {calibration_error:.4f}")
+        print(f"Calibration Error (MAE): {mae:.4f}")
+        
+        # Calculate correlation between errors and uncertainties
+        correlation = np.corrcoef(errors, uncertainties)[0, 1]
+        print(f"Error-Uncertainty Correlation: {correlation:.4f}")
+        
+        # Calculate percentage of points where uncertainty bounds contain ground truth
+        within_bounds = np.sum(np.abs(ppg_norm - gt_norm) <= uncertainties) / len(gt_norm)
+        print(f"Percentage within uncertainty bounds: {within_bounds*100:.2f}%")
+        
+        # Scatter plot of errors vs uncertainties
+        plt.figure(figsize=(8, 8))
+        plt.scatter(errors, uncertainties, alpha=0.5)
+        plt.plot([0, max(np.max(errors), np.max(uncertainties))], 
+                [0, max(np.max(errors), np.max(uncertainties))], 
+                'r--', label='Perfect calibration')
+        plt.xlabel('Actual Errors')
+        plt.ylabel('Predicted Uncertainties')
+        plt.title('Uncertainty Calibration Plot')
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'uncertainty_calibration.png'))
+        plt.close()
+    
+    # 4. Uncertainty distribution analysis
+    print("\n4. Uncertainty Distribution Analysis:")
+    
+    # Histogram of uncertainties
+    plt.figure(figsize=(10, 5))
+    plt.hist(uncertainties, bins=30, alpha=0.7)
+    plt.axvline(np.mean(uncertainties), color='r', linestyle='--', label=f'Mean: {np.mean(uncertainties):.4f}')
+    plt.axvline(np.median(uncertainties), color='g', linestyle='--', label=f'Median: {np.median(uncertainties):.4f}')
+    plt.grid(True)
+    plt.xlabel('Uncertainty Value')
+    plt.ylabel('Frequency')
+    plt.title('Histogram of Uncertainty Values')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'uncertainty_histogram.png'))
+    plt.close()
+    
+    # 5. Visual validation
+    print("\n5. Visual Validation:")
+    print("Generating validation plots...")
+    
+    # Create figure with subplots
+    plt.figure(figsize=(15, 10))
+    
+    # Plot 1: Signal with uncertainty bands
+    plt.subplot(2, 1, 1)
+    plt.plot(timestamps, ppg_signal, label='PPG Signal', color='blue')
+    plt.fill_between(timestamps, 
+                    ppg_signal - uncertainties, 
+                    ppg_signal + uncertainties, 
+                    color='lightblue', alpha=0.5, label='±1σ Uncertainty')
+    if gt_signal is not None:
+        plt.plot(timestamps, gt_signal, label='Ground Truth', color='red', linestyle='--')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Amplitude')
+    plt.title('PPG Signal with Uncertainty Bands')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    
+    # Plot 2: Uncertainty over time
+    plt.subplot(2, 1, 2)
+    plt.plot(timestamps, uncertainties, label='Uncertainty', color='green')
+    if gt_signal is not None:
+        plt.plot(timestamps, np.abs(ppg_signal - gt_signal), 
+                label='Actual Error', color='red', linestyle='--')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Uncertainty/Error')
+    plt.title('Uncertainty vs Time')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'uncertainty_validation.png'))
+    plt.close()
+    
+    # 6. Chunk-based validation plots
+    print("\n6. Generating Chunk-Based Validation Plots:")
+    chunk_size = int(5 * 30)  # 5 seconds at 30 fps
+    
+    for i in range(0, len(timestamps), chunk_size):
+        end_idx = min(i + chunk_size, len(timestamps))
+        if end_idx - i < chunk_size // 2:  # Skip chunks that are too small
+            continue
+            
+        chunk_timestamps = timestamps[i:end_idx]
+        chunk_ppg = ppg_signal[i:end_idx]
+        chunk_uncertainties = uncertainties[i:end_idx]
+        
+        # Normalize signal for better visualization
+        chunk_ppg_norm = (chunk_ppg - np.mean(chunk_ppg)) / (np.std(chunk_ppg) + 1e-10)
+        
+        # Create figure for this chunk
+        plt.figure(figsize=(10, 6))
+        plt.plot(chunk_timestamps, chunk_ppg_norm, label='PPG Signal (normalized)', color='blue')
+        plt.fill_between(chunk_timestamps, 
+                        chunk_ppg_norm - chunk_uncertainties, 
+                        chunk_ppg_norm + chunk_uncertainties, 
+                        color='lightblue', alpha=0.5, label='±1σ Uncertainty')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Normalized Amplitude')
+        plt.title(f'Chunk {i//chunk_size + 1}: Time {chunk_timestamps[0]:.1f}s to {chunk_timestamps[-1]:.1f}s')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, f'chunk_{i//chunk_size + 1}.png'))
+        plt.close()
+    
+    print(f"All validation plots saved to {output_dir}/")
+    
+    return None
+
+
 def test_uncertainty_model(config, model_path, test_video_path):
     """
     Test the trained UncertaintyWrapper model on a test video.
@@ -151,7 +351,7 @@ def test_uncertainty_model(config, model_path, test_video_path):
         
         # Process test video in smaller chunks to save memory
         print("Processing test video in chunks...")
-        chunk_size = 10  # Process 10 seconds at a time (reduced from 30)
+        chunk_size = 10  # Process 10 seconds at a time
         total_duration = None
         all_timestamps = []
         all_ppg_signals = []
@@ -209,7 +409,16 @@ def test_uncertainty_model(config, model_path, test_video_path):
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
         
         print("Test video processing completed successfully")
-        return np.array(all_timestamps), np.array(all_ppg_signals), np.array(all_uncertainties)
+        
+        # Convert lists to numpy arrays
+        timestamps = np.array(all_timestamps)
+        ppg_signal = np.array(all_ppg_signals)
+        uncertainties = np.array(all_uncertainties)
+        
+        # Validate the results
+        validate_uncertainty(timestamps, ppg_signal, uncertainties)
+        
+        return timestamps, ppg_signal, uncertainties
     
     except Exception as e:
         print(f"Error during testing: {str(e)}")
