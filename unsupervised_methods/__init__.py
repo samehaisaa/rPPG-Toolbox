@@ -3,4 +3,4 @@ from unsupervised_methods.methods.ICA_POH import *
 from unsupervised_methods.methods.POS_WANG import *
 from unsupervised_methods.methods.LGI import *
 from unsupervised_methods.methods.GREEN import *
-from unsupervised_methods.uncertainty_wrapper import SupervisedUncertaintyWrapper
+from unsupervised_methods.supervised_uncertainty_wrapper import SupervisedUncertaintyWrapper
