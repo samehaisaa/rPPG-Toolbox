@@ -343,28 +343,3 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
             for m, mode in bn_modes.items():
                 m.train(mode)
 
-    def predict_with_uncertainty(self, x, gra_sharp, num_samples: int = 10):
-        """
-        Compute rPPG predictions and uncertainty estimates via MC dropout.
-        
-        Args:
-            x: input tensor.
-            gra_sharp: additional input required by the network.
-            num_samples: number of stochastic forward passes.
-            
-        Returns:
-            mean_pred: mean rPPG prediction across samples.
-            std_pred: standard deviation (uncertainty) per timestep.
-            scores: attention scores from the final transformer block (from the last forward pass).
-        """
-        preds = []
-        # Use the context manager to enable dropout sampling
-        with self.mc_dropout_mode():
-            for _ in range(num_samples):
-                rPPG, Score1, Score2, Score3 = self.forward(x, gra_sharp)
-                preds.append(rPPG)
-        preds = torch.stack(preds, dim=0)  # shape: [num_samples, B, T]
-        mean_pred = preds.mean(dim=0)       # mean over samples
-        std_pred = preds.std(dim=0)         # std deviation as uncertainty measure
-        # You can choose which attention scores to return; here we return the last block's score.
-        return mean_pred, std_pred, Score3
