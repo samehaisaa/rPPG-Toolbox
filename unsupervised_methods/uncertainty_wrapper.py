@@ -205,12 +205,14 @@ class UncertaintyWrapper:
         
         return self
     
-    def predict_with_uncertainty(self, video_path):
+    def predict_with_uncertainty(self, video_path, start_time=None, end_time=None):
         """
         Process a video and return the PPG signal with uncertainty estimates.
         
         Args:
             video_path (str): Path to the video file
+            start_time (float, optional): Start time in seconds
+            end_time (float, optional): End time in seconds
             
         Returns:
             tuple: (timestamps, ppg_signal, uncertainty)
@@ -218,8 +220,8 @@ class UncertaintyWrapper:
         if self.model is None:
             raise ValueError("Model not trained or loaded. Call train() or load_model() first.")
         
-        # Load video frames
-        frames = self._load_video(video_path)
+        # Load video frames with memory-efficient approach
+        frames = self._load_video_chunk(video_path, start_time, end_time)
         if frames is None:
             raise ValueError(f"Could not load video {video_path}")
         
@@ -241,8 +243,63 @@ class UncertaintyWrapper:
         
         # Create timestamps
         timestamps = np.arange(len(ppg_signal)) / self.fs
+        if start_time is not None:
+            timestamps += start_time
         
         return timestamps, ppg_signal, uncertainties
+    
+    def _load_video_chunk(self, video_path, start_time=None, end_time=None):
+        """
+        Load a chunk of video frames efficiently.
+        
+        Args:
+            video_path (str): Path to the video file
+            start_time (float, optional): Start time in seconds
+            end_time (float, optional): End time in seconds
+            
+        Returns:
+            np.ndarray: Video frames
+        """
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return None
+        
+        # Get video properties
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        # Calculate frame range
+        if start_time is None:
+            start_frame = 0
+        else:
+            start_frame = int(start_time * fps)
+        
+        if end_time is None:
+            end_frame = total_frames
+        else:
+            end_frame = int(end_time * fps)
+        
+        # Ensure valid frame range
+        start_frame = max(0, min(start_frame, total_frames))
+        end_frame = max(start_frame, min(end_frame, total_frames))
+        
+        # Set starting position
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        
+        # Read frames
+        frames = []
+        for _ in range(start_frame, end_frame):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frames.append(frame)
+        
+        cap.release()
+        
+        if not frames:
+            return None
+        
+        return np.array(frames)
     
     def save_model(self, model_path):
         """
