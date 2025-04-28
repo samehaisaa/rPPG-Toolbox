@@ -16,7 +16,8 @@ import joblib
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 import cv2
-from evaluation.post_process import _calculate_SNR
+from evaluation.post_process import _calculate_SNR, _calculate_fft_hr, _calculate_peak_hr, _compute_macc, _detrend
+from scipy.signal import butter, filtfilt
 from unsupervised_methods.methods.CHROME_DEHAAN import CHROME_DEHAAN, process_video
 
 
@@ -72,7 +73,45 @@ class UncertaintyWrapper:
         rgb_means = np.mean(rgb_signals, axis=0)
         
         # 3. Overall signal SNR
-        signal_snr = _calculate_SNR(ppg_signal, self.fs)
+        hr_fft = _calculate_fft_hr(ppg_signal, fs=self.fs)
+        hr_peak = _calculate_peak_hr(ppg_signal, fs=self.fs)
+        signal_snr = _calculate_SNR(ppg_signal, hr_fft, fs=self.fs)
+        
+        # 4. Calculate MACC (Maximum Amplitude of Cross Correlation) with a slightly shifted version of itself
+        # This tells us how periodic and consistent the signal is
+        shift_samples = int(0.2 * self.fs)  # 0.2 second shift
+        if len(ppg_signal) > 2*shift_samples:
+            macc = _compute_macc(ppg_signal[:-shift_samples], ppg_signal[shift_samples:])
+        else:
+            macc = 0
+        
+        # 5. Calculate signal power in different frequency bands
+        # Bandpass filter between [0.6, 3.3] Hz (36-198 bpm)
+        [b, a] = butter(1, [0.6 / self.fs * 2, 3.3 / self.fs * 2], btype='bandpass')
+        filtered_signal = filtfilt(b, a, np.double(ppg_signal))
+        
+        # Low frequency power (0.6-1.0 Hz)
+        [b_low, a_low] = butter(1, [0.6 / self.fs * 2, 1.0 / self.fs * 2], btype='bandpass')
+        low_freq_signal = filtfilt(b_low, a_low, np.double(ppg_signal))
+        low_freq_power = np.mean(np.square(low_freq_signal))
+        
+        # Heart rate frequency power (1.0-2.0 Hz)
+        [b_hr, a_hr] = butter(1, [1.0 / self.fs * 2, 2.0 / self.fs * 2], btype='bandpass')
+        hr_freq_signal = filtfilt(b_hr, a_hr, np.double(ppg_signal))
+        hr_freq_power = np.mean(np.square(hr_freq_signal))
+        
+        # High frequency power (2.0-3.3 Hz)
+        [b_high, a_high] = butter(1, [2.0 / self.fs * 2, 3.3 / self.fs * 2], btype='bandpass')
+        high_freq_signal = filtfilt(b_high, a_high, np.double(ppg_signal))
+        high_freq_power = np.mean(np.square(high_freq_signal))
+        
+        # 6. Calculate signal complexity/entropy measures
+        # Zero-crossing rate
+        zero_crossings = np.sum(np.abs(np.diff(np.signbit(filtered_signal)))) / len(filtered_signal)
+        
+        # Signal range and variance after filtering (indicates signal quality)
+        signal_range = np.max(filtered_signal) - np.min(filtered_signal)
+        signal_var = np.var(filtered_signal)
         
         # Sliding window analysis for local features
         window_size = int(1.0 * self.fs)  # 1-second window
@@ -92,18 +131,62 @@ class UncertaintyWrapper:
             # Local features for this window
             window_features = []
             
-            # 4. Local PPG signal statistics
+            # 7. Local PPG signal statistics
             window_features.extend([
                 np.mean(ppg_window),
                 np.std(ppg_window),
                 np.max(ppg_window) - np.min(ppg_window),  # Range
             ])
             
-            # 5. Local signal SNR
-            local_snr = _calculate_SNR(ppg_window, self.fs)
+            # 8. Local signal SNR
+            # Try to get local SNR if there are enough samples
+            if len(ppg_window) >= int(self.fs * 1.5):  # Need at least 1.5 seconds for reasonable HR estimation
+                try:
+                    local_hr_fft = _calculate_fft_hr(ppg_window, fs=self.fs)
+                    local_snr = _calculate_SNR(ppg_window, local_hr_fft, fs=self.fs)
+                except:
+                    local_snr = 0  # Fallback if calculation fails
+            else:
+                local_snr = 0
+                
             window_features.append(local_snr)
             
-            # 6. Local RGB statistics
+            # 9. Local spectral features
+            if len(ppg_window) >= int(self.fs * 1.0):  # Need at least 1 second
+                try:
+                    # Apply bandpass filter to window
+                    filtered_window = filtfilt(b, a, np.double(ppg_window))
+                    
+                    # Calculate local zero crossing rate
+                    local_zero_crossings = np.sum(np.abs(np.diff(np.signbit(filtered_window)))) / len(filtered_window)
+                    
+                    # Calculate local frequency powers
+                    local_low_freq = filtfilt(b_low, a_low, np.double(ppg_window))
+                    local_low_power = np.mean(np.square(local_low_freq))
+                    
+                    local_hr_freq = filtfilt(b_hr, a_hr, np.double(ppg_window))
+                    local_hr_power = np.mean(np.square(local_hr_freq))
+                    
+                    local_high_freq = filtfilt(b_high, a_high, np.double(ppg_window))
+                    local_high_power = np.mean(np.square(local_high_freq))
+                    
+                    # Add local spectral features
+                    window_features.extend([
+                        local_zero_crossings,
+                        local_low_power,
+                        local_hr_power,
+                        local_high_power,
+                        local_hr_power/(local_low_power+local_high_power+1e-10)  # Ratio of HR power to other frequencies
+                    ])
+                except:
+                    # Fallback values if calculation fails
+                    window_features.extend([0, 0, 0, 0, 0])
+            else:
+                # Use global values if window is too small
+                window_features.extend([zero_crossings, low_freq_power, hr_freq_power, high_freq_power, 
+                                       hr_freq_power/(low_freq_power+high_freq_power+1e-10)])
+            
+            # 10. Local RGB statistics
             if rgb_window is not None:
                 local_rgb_vars = np.var(rgb_window, axis=0)
                 local_rgb_means = np.mean(rgb_window, axis=0)
@@ -114,10 +197,22 @@ class UncertaintyWrapper:
                 window_features.extend(rgb_vars)
                 window_features.extend(rgb_means)
             
-            # 7. Global features for context
-            window_features.extend(rgb_vars)
-            window_features.extend(rgb_means)
-            window_features.append(signal_snr)
+            # 11. Global features for context
+            window_features.extend([
+                rgb_vars[0], rgb_vars[1], rgb_vars[2],
+                rgb_means[0], rgb_means[1], rgb_means[2],
+                signal_snr,
+                macc,
+                hr_fft,
+                hr_peak,
+                signal_range,
+                signal_var,
+                low_freq_power,
+                hr_freq_power,
+                high_freq_power,
+                zero_crossings,
+                hr_freq_power/(low_freq_power+high_freq_power+1e-10)  # Ratio of HR power to other frequencies
+            ])
             
             # Create feature vector for each time point in the window
             for _ in range(i, end_idx):
