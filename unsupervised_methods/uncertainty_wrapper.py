@@ -264,42 +264,61 @@ class UncertaintyWrapper:
         if not cap.isOpened():
             return None
         
-        # Get video properties
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
-        # Calculate frame range
-        if start_time is None:
-            start_frame = 0
-        else:
-            start_frame = int(start_time * fps)
-        
-        if end_time is None:
-            end_frame = total_frames
-        else:
-            end_frame = int(end_time * fps)
-        
-        # Ensure valid frame range
-        start_frame = max(0, min(start_frame, total_frames))
-        end_frame = max(start_frame, min(end_frame, total_frames))
-        
-        # Set starting position
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-        
-        # Read frames
-        frames = []
-        for _ in range(start_frame, end_frame):
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frames.append(frame)
-        
-        cap.release()
-        
-        if not frames:
-            return None
-        
-        return np.array(frames)
+        try:
+            # Get video properties
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            # Calculate frame range
+            if start_time is None:
+                start_frame = 0
+            else:
+                start_frame = int(start_time * fps)
+            
+            if end_time is None:
+                end_frame = total_frames
+            else:
+                end_frame = int(end_time * fps)
+            
+            # Ensure valid frame range
+            start_frame = max(0, min(start_frame, total_frames))
+            end_frame = max(start_frame, min(end_frame, total_frames))
+            
+            # Set starting position
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            
+            # Process frames in smaller batches to save memory
+            batch_size = 100  # Process 100 frames at a time
+            frames = []
+            current_frame = start_frame
+            
+            while current_frame < end_frame:
+                batch_frames = []
+                batch_end = min(current_frame + batch_size, end_frame)
+                
+                for _ in range(current_frame, batch_end):
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    batch_frames.append(frame)
+                
+                if batch_frames:
+                    frames.extend(batch_frames)
+                
+                current_frame = batch_end
+                
+                # Clear batch frames to free memory
+                del batch_frames
+                import gc
+                gc.collect()
+            
+            if not frames:
+                return None
+            
+            return np.array(frames)
+            
+        finally:
+            cap.release()
     
     def save_model(self, model_path):
         """
