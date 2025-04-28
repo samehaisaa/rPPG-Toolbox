@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """
-Script to train and test the UncertaintyWrapper for rPPG signal uncertainty estimation.
+Script to train and test the SupervisedUncertaintyWrapper for rPPG signal uncertainty estimation.
 
 This script:
-1. Trains the UncertaintyWrapper on a dataset with ground truth
+1. Trains the SupervisedUncertaintyWrapper on a dataset with ground truth
 2. Tests it on new videos to produce PPG signals with uncertainty
 3. Visualizes the results
 """
@@ -17,14 +17,14 @@ import torch
 from torch.utils.data import DataLoader
 from config import get_config
 from dataset import data_loader
-from unsupervised_methods.uncertainty_wrapper import UncertaintyWrapper
+from unsupervised_methods.supervised_uncertainty_wrapper import SupervisedUncertaintyWrapper
 import glob
 from visualization import plot_bvp_with_confidence
 
 
 def train_uncertainty_model(config, data_loader, output_model_path):
     """
-    Train the UncertaintyWrapper model using the provided data loader.
+    Train the SupervisedUncertaintyWrapper model using the provided data loader.
     
     Args:
         config: Configuration object
@@ -32,22 +32,18 @@ def train_uncertainty_model(config, data_loader, output_model_path):
         output_model_path: Path to save the trained model
         
     Returns:
-        Trained UncertaintyWrapper instance
+        Trained SupervisedUncertaintyWrapper instance
     """
-    print("===Training UncertaintyWrapper Model===")
+    print("===Training Supervised Uncertainty Model===")
     
-    # Initialize UncertaintyWrapper with sampling frequency from config
-    wrapper = UncertaintyWrapper(fs=config.UNSUPERVISED.DATA.FS)
+    # Initialize SupervisedUncertaintyWrapper with sampling frequency from config
+    wrapper = SupervisedUncertaintyWrapper(fs=config.UNSUPERVISED.DATA.FS)
     
     # Extract video paths and ground truth signals from data loader
     video_paths = []
     gt_signals = []
     
-    # Process videos in smaller chunks to save memory
-    chunk_size = 2  # Process 2 videos at a time
-    current_chunk = []
-    current_gt = []
-    
+    # Process each batch from the data loader
     for batch_idx, batch in enumerate(data_loader["unsupervised"]):
         # Extract video data and ground truth from batch
         video_data = batch[0].cpu().numpy()
@@ -58,7 +54,7 @@ def train_uncertainty_model(config, data_loader, output_model_path):
             # Create a temporary video file
             video_frames = video_data[idx]
             video_name = f"temp_video_{batch_idx}_{idx}.mp4"
-            video_path = os.path.join("perturbed_data", "temp_videos", video_name)
+            video_path = os.path.join("preprocessed_data", "temp_videos", video_name)
             
             # Ensure directory exists
             os.makedirs(os.path.dirname(video_path), exist_ok=True)
@@ -66,38 +62,19 @@ def train_uncertainty_model(config, data_loader, output_model_path):
             # Save frames as a video file
             _save_video(video_frames, video_path)
             
-            # Add to current chunk
-            current_chunk.append(video_path)
-            current_gt.append(gt_bvp[idx])
-            
-            # If we've reached the chunk size, process this chunk
-            if len(current_chunk) >= chunk_size:
-                print(f"Processing videos {len(video_paths)+1}-{len(video_paths)+len(current_chunk)}/{len(data_loader['unsupervised'])}")
-                wrapper.train(current_chunk, current_gt, output_model_path)
-                
-                # Clean up temporary files
-                for video_path in current_chunk:
-                    if os.path.exists(video_path):
-                        os.remove(video_path)
-                
-                # Clear current chunk
-                current_chunk = []
-                current_gt = []
-                
-                # Force garbage collection
-                import gc
-                gc.collect()
-                torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            # Add to lists
+            video_paths.append(video_path)
+            gt_signals.append(gt_bvp[idx])
     
-    # Process any remaining videos
-    if current_chunk:
-        print(f"Processing remaining videos {len(video_paths)+1}-{len(video_paths)+len(current_chunk)}/{len(data_loader['unsupervised'])}")
-        wrapper.train(current_chunk, current_gt, output_model_path)
-        
-        # Clean up temporary files
-        for video_path in current_chunk:
-            if os.path.exists(video_path):
-                os.remove(video_path)
+    print(f"Collected {len(video_paths)} videos for training.")
+    
+    # Train the model using all videos at once (more efficient than chunks for supervised approach)
+    wrapper.train(video_paths, gt_signals, output_model_path)
+    
+    # Clean up temporary video files
+    for video_path in video_paths:
+        if os.path.exists(video_path):
+            os.remove(video_path)
     
     return wrapper
 
@@ -128,6 +105,101 @@ def _save_video(frames, output_path):
         out.write(bgr_frame)
     
     out.release()
+
+
+def test_uncertainty_model(config, model_path, test_video_path):
+    """
+    Test the trained SupervisedUncertaintyWrapper model on a test video.
+    
+    Args:
+        config: Configuration object
+        model_path: Path to the trained model
+        test_video_path: Path to the test video file
+        
+    Returns:
+        Tuple of (timestamps, ppg_signal, uncertainties)
+    """
+    print(f"===Testing Supervised Uncertainty Model on {test_video_path}===")
+    
+    try:
+        # Load trained model
+        print("Loading model...")
+        wrapper = SupervisedUncertaintyWrapper(fs=config.UNSUPERVISED.DATA.FS, model_path=model_path)
+        
+        # Process test video in smaller chunks to save memory
+        print("Processing test video in chunks...")
+        chunk_size = 10  # Process 10 seconds at a time
+        total_duration = None
+        all_timestamps = []
+        all_ppg_signals = []
+        all_uncertainties = []
+        
+        # Get video duration
+        import cv2
+        cap = cv2.VideoCapture(test_video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        total_duration = frame_count / fps
+        cap.release()
+        
+        print(f"Video duration: {total_duration:.2f} seconds")
+        
+        # Process video in chunks
+        current_time = 0
+        while current_time < total_duration:
+            end_time = min(current_time + chunk_size, total_duration)
+            print(f"Processing chunk from {current_time:.1f}s to {end_time:.1f}s...")
+            
+            try:
+                # Process current chunk
+                timestamps, ppg_signal, uncertainties = wrapper.predict_with_uncertainty(
+                    test_video_path,
+                    start_time=current_time,
+                    end_time=end_time
+                )
+                
+                # Append results
+                all_timestamps.extend(timestamps)
+                all_ppg_signals.extend(ppg_signal)
+                all_uncertainties.extend(uncertainties)
+                
+                # Force garbage collection and clear memory
+                import gc
+                gc.collect()
+                torch.cuda.empty_cache() if torch.cuda.is_available() else None
+                
+                # Clear variables to free memory
+                del timestamps
+                del ppg_signal
+                del uncertainties
+                
+            except Exception as e:
+                print(f"Error processing chunk {current_time:.1f}s-{end_time:.1f}s: {str(e)}")
+                # Continue with next chunk
+                pass
+            
+            # Move to next chunk
+            current_time = end_time
+            
+            # Additional memory cleanup
+            gc.collect()
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        
+        print("Test video processing completed successfully")
+        
+        # Convert lists to numpy arrays
+        timestamps = np.array(all_timestamps)
+        ppg_signal = np.array(all_ppg_signals)
+        uncertainties = np.array(all_uncertainties)
+        
+        # Validate the results
+        validate_uncertainty(timestamps, ppg_signal, uncertainties)
+        
+        return timestamps, ppg_signal, uncertainties
+    
+    except Exception as e:
+        print(f"Error during testing: {str(e)}")
+        raise
 
 
 def validate_uncertainty(timestamps, ppg_signal, uncertainties, gt_signal=None):
@@ -330,101 +402,6 @@ def validate_uncertainty(timestamps, ppg_signal, uncertainties, gt_signal=None):
     return None
 
 
-def test_uncertainty_model(config, model_path, test_video_path):
-    """
-    Test the trained UncertaintyWrapper model on a test video.
-    
-    Args:
-        config: Configuration object
-        model_path: Path to the trained model
-        test_video_path: Path to the test video file
-        
-    Returns:
-        Tuple of (timestamps, ppg_signal, uncertainties)
-    """
-    print(f"===Testing UncertaintyWrapper Model on {test_video_path}===")
-    
-    try:
-        # Load trained model
-        print("Loading model...")
-        wrapper = UncertaintyWrapper(fs=config.UNSUPERVISED.DATA.FS, model_path=model_path)
-        
-        # Process test video in smaller chunks to save memory
-        print("Processing test video in chunks...")
-        chunk_size = 10  # Process 10 seconds at a time
-        total_duration = None
-        all_timestamps = []
-        all_ppg_signals = []
-        all_uncertainties = []
-        
-        # Get video duration
-        import cv2
-        cap = cv2.VideoCapture(test_video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        total_duration = frame_count / fps
-        cap.release()
-        
-        print(f"Video duration: {total_duration:.2f} seconds")
-        
-        # Process video in chunks
-        current_time = 0
-        while current_time < total_duration:
-            end_time = min(current_time + chunk_size, total_duration)
-            print(f"Processing chunk from {current_time:.1f}s to {end_time:.1f}s...")
-            
-            try:
-                # Process current chunk
-                timestamps, ppg_signal, uncertainties = wrapper.predict_with_uncertainty(
-                    test_video_path,
-                    start_time=current_time,
-                    end_time=end_time
-                )
-                
-                # Append results
-                all_timestamps.extend(timestamps)
-                all_ppg_signals.extend(ppg_signal)
-                all_uncertainties.extend(uncertainties)
-                
-                # Force garbage collection and clear memory
-                import gc
-                gc.collect()
-                torch.cuda.empty_cache() if torch.cuda.is_available() else None
-                
-                # Clear variables to free memory
-                del timestamps
-                del ppg_signal
-                del uncertainties
-                
-            except Exception as e:
-                print(f"Error processing chunk {current_time:.1f}s-{end_time:.1f}s: {str(e)}")
-                # Continue with next chunk
-                pass
-            
-            # Move to next chunk
-            current_time = end_time
-            
-            # Additional memory cleanup
-            gc.collect()
-            torch.cuda.empty_cache() if torch.cuda.is_available() else None
-        
-        print("Test video processing completed successfully")
-        
-        # Convert lists to numpy arrays
-        timestamps = np.array(all_timestamps)
-        ppg_signal = np.array(all_ppg_signals)
-        uncertainties = np.array(all_uncertainties)
-        
-        # Validate the results
-        validate_uncertainty(timestamps, ppg_signal, uncertainties)
-        
-        return timestamps, ppg_signal, uncertainties
-    
-    except Exception as e:
-        print(f"Error during testing: {str(e)}")
-        raise
-
-
 def visualize_results(timestamps, ppg_signal, uncertainties, output_path=None):
     """
     Visualize the PPG signal with uncertainty.
@@ -492,12 +469,12 @@ def visualize_results(timestamps, ppg_signal, uncertainties, output_path=None):
 
 def parse_args():
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description='Run UncertaintyWrapper for rPPG signal uncertainty estimation')
+    parser = argparse.ArgumentParser(description='Run SupervisedUncertaintyWrapper for rPPG signal uncertainty estimation')
     parser.add_argument('--config', type=str, default='configs/infer_configs/UBFC-rPPG_CHROM_UNCERTAINTY.yaml',
                         help='Path to the configuration file')
     parser.add_argument('--mode', type=str, choices=['train', 'test', 'train_and_test'], default='train_and_test',
                         help='Mode to run: train, test, or both')
-    parser.add_argument('--model_path', type=str, default='model_outputs/uncertainty_model/chrom_uncertainty_model.joblib',
+    parser.add_argument('--model_path', type=str, default='model_outputs/uncertainty_model/supervised_chrom_uncertainty_model.joblib',
                         help='Path to save/load the trained model')
     parser.add_argument('--test_video', type=str, default=None,
                         help='Path to a test video file (required for test mode)')
@@ -542,7 +519,7 @@ def main():
             unsupervised_loader = None
         
         if unsupervised_loader is not None:
-            # Create dataset and dataloader for unsupervised method
+            # Create dataset and dataloader for supervised method
             unsupervised_data = unsupervised_loader(
                 name="unsupervised",
                 data_path=config.UNSUPERVISED.DATA.DATA_PATH,
@@ -550,9 +527,14 @@ def main():
                 device=config.DEVICE
             )
             
+            # Use a larger batch size since we're not using perturbations anymore
+            batch_size = 4  # Adjust based on available memory
+            if hasattr(config.UNSUPERVISED.DATA, 'BATCH_SIZE'):
+                batch_size = config.UNSUPERVISED.DATA.BATCH_SIZE
+            
             data_loaders["unsupervised"] = DataLoader(
                 dataset=unsupervised_data,
-                batch_size=1,
+                batch_size=batch_size,
                 shuffle=False,
                 num_workers=4
             )
